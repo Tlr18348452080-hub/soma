@@ -1,0 +1,15 @@
+# dsh-soma —— 把「一副身体」挂进 DSH 配置树
+#
+# 它做三件事：
+#   1. 后台按真实时间推进身体状态（人不在，它也会饿、会累）
+#   2. 每轮把 [body] 一行塞进系统提示
+#   3. 用 agent/request waterfall 真的改输出预算 —— 累了就是写不了那么多字
+
+- insert:
+    - id: soma
+      name: 'dsh-soma'
+      config:
+        weight: 50
+        tickMs: 5000
+        maxTokensBase: 800
+        maxTokensFloor: 200
