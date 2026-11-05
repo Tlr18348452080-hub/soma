@@ -68,7 +68,7 @@ export class Rhythm extends Channel {
     const car = Math.exp(-Math.pow((this.awake - 1800) / 1200, 2));
     const cDay = 0.5 - 0.5 * Math.cos(TWO_PI * (p - 20 / 24));
     // 褪黑素：天黑后起，凌晨 3 点前后最高 [S]
-    const melatonin = 0.5 - 0.5 * Math.cos(TWO_PI * (p - 3 / 24));
+    const melatonin = 0.5 + 0.5 * Math.cos(TWO_PI * (p - 3 / 24));
     // 昼夜那一路：只在那个谷上建模，白天接近满值。
     // 谷的位置取 05:20（睡眠倾向峰值时刻，PMID 22621352）[S]
     const d = Math.abs(p - (5 + 20 / 60) / 24);
