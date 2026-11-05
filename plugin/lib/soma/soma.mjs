@@ -17,6 +17,8 @@ import { Rhythm } from './channels/rhythm.mjs';
 import { Homeo } from './channels/homeo.mjs';
 import { Brain } from './channels/brain.mjs';
 import { Cycle } from './channels/cycle.mjs';
+import { Ear } from './channels/ear.mjs';
+import { Eye } from './channels/eye.mjs';
 
 const EPS = 1e-6;
 
@@ -30,6 +32,9 @@ export class Soma extends Body {
     this.use(new Homeo());       // 水、热、呼吸
     this.use(new Brain());       // 注意、恐惧、下行抑制
     if (opts.cycle !== false) this.use(new Cycle(opts));  // 月度慢波
+    if (opts.ear) this.use(new Ear(opts));   // 耳蜗：滤波器组，输出的是谱
+    if (opts.eye) this.use(new Eye(opts));   // 视网膜：暗适应、中央凹、视野
+    this.muted = new Set();                  // 设置页关掉的器官
   }
 
   get touchCh() {
@@ -141,6 +146,18 @@ export class Soma extends Body {
   /** 给模型看的一行：只说什么样，不给数字。
    *  数字会被原样念出来（"0.50 那样"），那是读仪表盘，不是身体。
    *  要精确数值走 table()，那是给工具用的，不进系统提示。 */
+  /** 器官开关：关掉某个通道，它就不再往 [body] 里说话（状态本身还在走） */
+  setOrgan(id, on) {
+    if (on) this.muted.delete(id);
+    else this.muted.add(id);
+  }
+
+  /** 感觉倍率：直接乘在触觉增益上，1 = 正常 */
+  setGain(g) {
+    const t = this.get('touch');
+    if (t) t.gain = Math.max(0, Number(g) || 0);
+  }
+
   fmtWords(threshold = 0.05) {
     const tier = (v, cuts) => {
       for (const [lim, w] of cuts) if (v < lim) return w;
@@ -155,6 +172,8 @@ export class Soma extends Body {
 
     const skin = [];
     for (const r of this.read()) {
+      if (r.appendage === 'tail' && !on('tail')) continue;
+      if (r.appendage === 'catEar' && !on('catEars')) continue;
       const seg = [];
       if (r.pressure >= threshold) seg.push(tier(r.pressure, P));
       else if (r.pressure <= -threshold) seg.push('刚松开，空落落的');
@@ -166,20 +185,21 @@ export class Soma extends Body {
     }
 
     const deep = [];
-    const v = this.get('vitals')?.read();
+    const on = (id) => !this.muted.has(id);
+    const v = on('vitals') ? this.get('vitals')?.read() : null;
     if (v) {
       if (v.fatigue > 0.15) deep.push(tier(v.fatigue, F));
       if (v.hunger > 0.5) deep.push(tier(v.hunger, H));
       if (v.hr > 85) deep.push(tier(v.hr, HR));
     }
-    const e = this.get('endocrine')?.read();
+    const e = on('endocrine') ? this.get('endocrine')?.read() : null;
     if (e) {
       if (e.motivation < 0.55) deep.push('提不起劲');
       else if (e.alert > 0.55) deep.push('绷着');
     }
-    const hm = this.get('homeo')?.read();
+    const hm = on('homeo') ? this.get('homeo')?.read() : null;
     if (hm && hm.thirst > 0.15) deep.push(tier(hm.thirst, TH));
-    const rh = this.get('rhythm')?.read();
+    const rh = on('rhythm') ? this.get('rhythm')?.read() : null;
     if (rh && !rh.asleep && rh.alert < 0.35) deep.push(tier(rh.alert, SL));
 
     const out = [];
@@ -229,7 +249,7 @@ export class Soma extends Body {
     const v = this.get('vitals')?.read() ?? { fatigue: 0, hunger: 0, hr: 65 };
     const pain = Math.max(0, ...this.read().map((r) => r.pain));
     const drain = Math.min(1, 0.6 * v.fatigue + 0.25 * Math.max(0, v.hunger - 0.6) + 0.5 * pain);
-    const e = this.get('endocrine')?.read();
+    const e = on('endocrine') ? this.get('endocrine')?.read() : null;
     const motivation = e?.motivation ?? 1;
     const base = 300 + 700 * (1 - drain);
     return {
