@@ -13,6 +13,10 @@ import { Body } from './core.mjs';
 import { Touch, REGIONS, MATERIALS } from './channels/touch.mjs';
 import { Vitals } from './channels/vitals.mjs';
 import { Endocrine } from './channels/endocrine.mjs';
+import { Rhythm } from './channels/rhythm.mjs';
+import { Homeo } from './channels/homeo.mjs';
+import { Brain } from './channels/brain.mjs';
+import { Cycle } from './channels/cycle.mjs';
 
 const EPS = 1e-6;
 
@@ -22,11 +26,30 @@ export class Soma extends Body {
     this.use(new Touch(opts));
     this.use(new Vitals(opts));
     this.use(new Endocrine());   // 激素：不改内容，只改别的通道的常数
+    this.use(new Rhythm(opts));  // 昼夜节律与睡眠压力
+    this.use(new Homeo());       // 水、热、呼吸
+    this.use(new Brain());       // 注意、恐惧、下行抑制
+    if (opts.cycle !== false) this.use(new Cycle(opts));  // 月度慢波
   }
 
   get touchCh() {
     return this.get('touch');
   }
+
+  /** 睡下。腺苷开始清，清得慢。 */
+  sleep() { return this.emit({ type: 'sleep' }); }
+  wake() { return this.emit({ type: 'wake' }); }
+  /** 喝点水。amount 是占体重的比例，一杯约 0.005。 */
+  drink(amount = 0.005) { return this.emit({ type: 'drink', amount }); }
+  /** 把注意力放到某个部位。几分钟就散。 */
+  focus(region, strength = 0.6) {
+    this.emit({ type: 'focus', region, strength });
+    this.emit({ type: 'attend', part: region, gain: 1 + strength });
+    return this;
+  }
+  /** 被吓到。恐惧会放大痛，也会让人更警觉。 */
+  threaten(level = 0.5) { return this.emit({ type: 'threat', level }); }
+  soothe() { return this.emit({ type: 'soothe' }); }
 
   /** 应激：急了、被凶了、摔了一跤。皮质醇慢慢起，肾上腺素立刻起。 */
   stress(level = 0.5) { return this.emit({ type: 'stress', level }); }
@@ -127,6 +150,8 @@ export class Soma extends Body {
     const F = [[0.15, '有点累'], [0.45, '累'], [0.7, '很累'], [0.9, '累得不行'], [Infinity, '累得动不了']];
     const H = [[0.5, '有点饿'], [0.75, '饿'], [Infinity, '饿得慌']];
     const HR = [[85, '心跳略快'], [105, '心跳快'], [Infinity, '心跳很快']];
+    const TH = [[0.2, '有点渴'], [0.5, '渴'], [Infinity, '渴得慌']];
+    const SL = [[0.10, '困得睁不开眼'], [0.25, '困'], [Infinity, '有点困']];
 
     const skin = [];
     for (const r of this.read()) {
@@ -152,6 +177,10 @@ export class Soma extends Body {
       if (e.motivation < 0.55) deep.push('提不起劲');
       else if (e.alert > 0.55) deep.push('绷着');
     }
+    const hm = this.get('homeo')?.read();
+    if (hm && hm.thirst > 0.15) deep.push(tier(hm.thirst, TH));
+    const rh = this.get('rhythm')?.read();
+    if (rh && !rh.asleep && rh.alert < 0.35) deep.push(tier(rh.alert, SL));
 
     const out = [];
     if (skin.length) out.push(skin.join('，'));

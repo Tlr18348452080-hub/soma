@@ -33,6 +33,9 @@ function payload() {
     age: savedAt ? Math.round((Date.now() - savedAt) / 1000) : null,
     regions: soma.read(),
     vitals: (() => { try { return soma.get('vitals').read(); } catch { return {}; } })(),
+    rhythm: (() => { try { return soma.get('rhythm').read(); } catch { return null; } })(),
+    homeo: (() => { try { return soma.get('homeo').read(); } catch { return null; } })(),
+    cycle: (() => { try { return soma.get('cycle').read(); } catch { return null; } })(),
     table: err ? '' : soma.table(),
   };
 }
@@ -74,6 +77,9 @@ svg{width:100%;height:auto;display:block}
       <div class="gauge"><div class="lbl"><span>疲劳</span><b id="fatv">—</b></div><div class="bar"><i id="fatb" style="background:#c58cff;width:0"></i></div></div>
       <div class="gauge"><div class="lbl"><span>饥饿</span><b id="hungv">—</b></div><div class="bar"><i id="hungb" style="background:#ffb454;width:0"></i></div></div>
       <div class="gauge"><div class="lbl"><span>血糖</span><b id="gluv">—</b></div><div class="bar"><i id="glub" style="background:#4fd1c5;width:0"></i></div></div>
+      <div class="gauge"><div class="lbl"><span>警觉</span><b id="alv">—</b></div><div class="bar"><i id="alb" style="background:#8b9cf5;width:0"></i></div></div>
+      <div class="gauge"><div class="lbl"><span>渴</span><b id="thv">—</b></div><div class="bar"><i id="thb" style="background:#5fc9f8;width:0"></i></div></div>
+      <div style="color:var(--dim);font-size:12px;line-height:1.7;margin-top:6px" id="slow">—</div>
     </div>
     <div class="card"><h3>皮肤（只列有动静的）</h3><table id="tbl"></table></div>
   </div>
@@ -136,6 +142,21 @@ function vitals(o){
   document.getElementById('glub').style.background = g<3.9 ? '#ff6b6b' : '#4fd1c5';
 }
 
+function slow(d){
+  const r=d.rhythm||{}; const h=d.homeo||{}; const c=d.cycle||{};
+  const al=Math.round((r.alert??0)*100);
+  document.getElementById('alv').textContent=al+'%';
+  document.getElementById('alb').style.width=al+'%';
+  const th=Math.round((h.thirst??0)*100);
+  document.getElementById('thv').textContent=th+'%';
+  document.getElementById('thb').style.width=th+'%';
+  const clock=r.clock!=null?String(Math.floor(r.clock/3600)).padStart(2,'0')+':'+String(Math.floor(r.clock%3600/60)).padStart(2,'0'):'—';
+  const parts=[clock+' 身体钟', '核心 '+(h.coreT??0).toFixed(1)+'°C'];
+  if(r.asleep) parts.push('睡着');
+  if(c.day) parts.push('第 '+Math.floor(c.day)+' 天');
+  document.getElementById('slow').textContent=parts.join(' · ');
+}
+
 function table(txt){
   const rows=txt.trim().split('\\n').slice(1).map(l=>l.split('|').map(s=>s.trim()));
   const body=rows.filter(r=>r[0]&&r[1]&&r[0]!=='—').map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td></tr>').join('');
@@ -149,7 +170,7 @@ async function tick(){
     if(!d.ok){ bl.innerHTML='读不到状态文件<small class="age">'+d.err+'</small>'; return; }
     bl.innerHTML=d.words+'<small class="age">'+(d.age===null?'':'上次写盘 '+d.age+' 秒前')+'</small>';
     draw(d.regions);
-    vitals(d.vitals||{});
+    vitals(d.vitals||{}); slow(d);
     table(d.table);
   }catch(e){ }
 }

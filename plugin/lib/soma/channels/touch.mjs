@@ -237,6 +237,7 @@ export class Touch extends Channel {
       return true;
     }
     if (ev.type === 'attend') {
+      if (!ev.part) return false;
       const r = this.region(ev.part);
       r.gain = ev.gain ?? 2.2;
       return true;
@@ -266,8 +267,11 @@ export class Touch extends Channel {
   step(h, ctx) {
     // 激素在这一层只做一件事：改常数。皮质醇高 → 同样的痛更痛（痛觉敏化）
     const hor = ctx?.endocrine;
-    const painGain = hor?.painGain ?? 1;
+    const br = ctx?.brain;
+    const painGain = (hor?.painGain ?? 1) * (br?.painMod ?? 1) * (ctx?.cycle?.painGain ?? 1);
     const comfortGain = hor?.comfortGain ?? 1;
+    // 注意落在哪：那处变响，别处被压下去。改的是读出来的强度，不是感受器本身
+    this._g = { focus: br?.focus ?? null, boost: br?.focusBoost ?? 1, cut: br?.otherCut ?? 1 };
     for (const r of this.regions) {
       const S = this.transduce(r.P + r.pWeight);
       r.barF += (S - r.barF) * (h / r.tauF);
@@ -341,8 +345,11 @@ export class Touch extends Channel {
 
   read() {
     const t = this.body?.t ?? 0;
+    const fg = this._g ?? { focus: null, boost: 1, cut: 1 };
     return this.regions.map((r) => {
-      const g = (r.gain ?? 1) * this.gain * (r.ticklish ?? 1);
+      // 注意的增益：盯着的地方更响，没盯着的退到背景里
+      const att = r.id === fg.focus ? fg.boost : fg.cut;
+      const g = (r.gain ?? 1) * this.gain * (r.ticklish ?? 1) * att;
       const S = this.transduce(r.P + r.pWeight);
       const RA = g * (S - r.barF);
       const SA = g * 0.6 * (S - r.barS);
@@ -357,9 +364,9 @@ export class Touch extends Channel {
         temp: r.T,
         held: r.since == null ? 0 : t - r.since,
         area: r.refArea,
-        pain: r.painNow,
+        pain: Math.min(1, r.painNow * (r.id === fg.focus ? fg.boost : fg.cut)),
         painLoad: r.painLoad,
-        ct: r.ct,
+        ct: r.ct * (r.id === fg.focus ? fg.boost : fg.cut),
         slip: r.slip,
       };
     });

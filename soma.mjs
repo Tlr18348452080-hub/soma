@@ -13,6 +13,12 @@ import { Body } from './core.mjs';
 import { Touch, REGIONS, MATERIALS } from './channels/touch.mjs';
 import { Vitals } from './channels/vitals.mjs';
 import { Endocrine } from './channels/endocrine.mjs';
+import { Rhythm } from './channels/rhythm.mjs';
+import { Homeo } from './channels/homeo.mjs';
+import { Brain } from './channels/brain.mjs';
+import { Cycle } from './channels/cycle.mjs';
+import { Ear } from './channels/ear.mjs';
+import { Eye } from './channels/eye.mjs';
 
 const EPS = 1e-6;
 
@@ -22,11 +28,33 @@ export class Soma extends Body {
     this.use(new Touch(opts));
     this.use(new Vitals(opts));
     this.use(new Endocrine());   // 激素：不改内容，只改别的通道的常数
+    this.use(new Rhythm(opts));  // 昼夜节律与睡眠压力
+    this.use(new Homeo());       // 水、热、呼吸
+    this.use(new Brain());       // 注意、恐惧、下行抑制
+    if (opts.cycle !== false) this.use(new Cycle(opts));  // 月度慢波
+    if (opts.ear) this.use(new Ear(opts));   // 耳蜗：滤波器组，输出的是谱
+    if (opts.eye) this.use(new Eye(opts));   // 视网膜：暗适应、中央凹、视野
+    this.muted = new Set();                  // 设置页关掉的器官
   }
 
   get touchCh() {
     return this.get('touch');
   }
+
+  /** 睡下。腺苷开始清，清得慢。 */
+  sleep() { return this.emit({ type: 'sleep' }); }
+  wake() { return this.emit({ type: 'wake' }); }
+  /** 喝点水。amount 是占体重的比例，一杯约 0.005。 */
+  drink(amount = 0.005) { return this.emit({ type: 'drink', amount }); }
+  /** 把注意力放到某个部位。几分钟就散。 */
+  focus(region, strength = 0.6) {
+    this.emit({ type: 'focus', region, strength });
+    this.emit({ type: 'attend', part: region, gain: 1 + strength });
+    return this;
+  }
+  /** 被吓到。恐惧会放大痛，也会让人更警觉。 */
+  threaten(level = 0.5) { return this.emit({ type: 'threat', level }); }
+  soothe() { return this.emit({ type: 'soothe' }); }
 
   /** 应激：急了、被凶了、摔了一跤。皮质醇慢慢起，肾上腺素立刻起。 */
   stress(level = 0.5) { return this.emit({ type: 'stress', level }); }
@@ -118,6 +146,18 @@ export class Soma extends Body {
   /** 给模型看的一行：只说什么样，不给数字。
    *  数字会被原样念出来（"0.50 那样"），那是读仪表盘，不是身体。
    *  要精确数值走 table()，那是给工具用的，不进系统提示。 */
+  /** 器官开关：关掉某个通道，它就不再往 [body] 里说话（状态本身还在走） */
+  setOrgan(id, on) {
+    if (on) this.muted.delete(id);
+    else this.muted.add(id);
+  }
+
+  /** 感觉倍率：直接乘在触觉增益上，1 = 正常 */
+  setGain(g) {
+    const t = this.get('touch');
+    if (t) t.gain = Math.max(0, Number(g) || 0);
+  }
+
   fmtWords(threshold = 0.05) {
     const tier = (v, cuts) => {
       for (const [lim, w] of cuts) if (v < lim) return w;
@@ -127,9 +167,13 @@ export class Soma extends Body {
     const F = [[0.15, '有点累'], [0.45, '累'], [0.7, '很累'], [0.9, '累得不行'], [Infinity, '累得动不了']];
     const H = [[0.5, '有点饿'], [0.75, '饿'], [Infinity, '饿得慌']];
     const HR = [[85, '心跳略快'], [105, '心跳快'], [Infinity, '心跳很快']];
+    const TH = [[0.2, '有点渴'], [0.5, '渴'], [Infinity, '渴得慌']];
+    const SL = [[0.10, '困得睁不开眼'], [0.25, '困'], [Infinity, '有点困']];
 
     const skin = [];
     for (const r of this.read()) {
+      if (r.appendage === 'tail' && !on('tail')) continue;
+      if (r.appendage === 'catEar' && !on('catEars')) continue;
       const seg = [];
       if (r.pressure >= threshold) seg.push(tier(r.pressure, P));
       else if (r.pressure <= -threshold) seg.push('刚松开，空落落的');
@@ -141,17 +185,22 @@ export class Soma extends Body {
     }
 
     const deep = [];
-    const v = this.get('vitals')?.read();
+    const on = (id) => !this.muted.has(id);
+    const v = on('vitals') ? this.get('vitals')?.read() : null;
     if (v) {
       if (v.fatigue > 0.15) deep.push(tier(v.fatigue, F));
       if (v.hunger > 0.5) deep.push(tier(v.hunger, H));
       if (v.hr > 85) deep.push(tier(v.hr, HR));
     }
-    const e = this.get('endocrine')?.read();
+    const e = on('endocrine') ? this.get('endocrine')?.read() : null;
     if (e) {
       if (e.motivation < 0.55) deep.push('提不起劲');
       else if (e.alert > 0.55) deep.push('绷着');
     }
+    const hm = on('homeo') ? this.get('homeo')?.read() : null;
+    if (hm && hm.thirst > 0.15) deep.push(tier(hm.thirst, TH));
+    const rh = on('rhythm') ? this.get('rhythm')?.read() : null;
+    if (rh && !rh.asleep && rh.alert < 0.35) deep.push(tier(rh.alert, SL));
 
     const out = [];
     if (skin.length) out.push(skin.join('，'));
@@ -200,7 +249,7 @@ export class Soma extends Body {
     const v = this.get('vitals')?.read() ?? { fatigue: 0, hunger: 0, hr: 65 };
     const pain = Math.max(0, ...this.read().map((r) => r.pain));
     const drain = Math.min(1, 0.6 * v.fatigue + 0.25 * Math.max(0, v.hunger - 0.6) + 0.5 * pain);
-    const e = this.get('endocrine')?.read();
+    const e = on('endocrine') ? this.get('endocrine')?.read() : null;
     const motivation = e?.motivation ?? 1;
     const base = 300 + 700 * (1 - drain);
     return {

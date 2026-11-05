@@ -58,6 +58,19 @@ export const POSES = {
  *   area     [A] 参考接触面积 cm²（整块区域的大致范围）
  *   kind     glabrous 无毛 / hairy 有毛
  */
+// 附加器官：不在人体上，但一样有皮肤、有神经末梢。
+// 默认关闭，设置页里打开。参数全是 [G]——没有文献可查，它们是设计出来的。
+export const EXTRA_REGIONS = [
+  // 尾巴：长 120 cm，有毛，基部粗、尾尖细。自己会甩，所以一直有微弱的触觉输入；
+  // 被抓住就不动了。触觉上更像有毛皮肤：轻抚敏感、空间分辨差。
+  { id: 'tail_base', label: '尾巴根', kind: 'hairy', density: 90,  acuity: 22, baseT: 34.0, rth: 1.10, tauF: 2.6, tauS: 22, area: 40, appendage: 'tail' },
+  { id: 'tail_mid',  label: '尾巴中段', kind: 'hairy', density: 70, acuity: 28, baseT: 33.2, rth: 1.20, tauF: 3.0, tauS: 26, area: 35, appendage: 'tail' },
+  { id: 'tail_tip',  label: '尾巴尖',  kind: 'hairy', density: 110, acuity: 16, baseT: 32.4, rth: 1.30, tauF: 2.2, tauS: 18, area: 18, appendage: 'tail' },
+  // 猫耳：薄、毛少、神经密。对气流和轻触极敏感，被吹到会抖；受惊会压平。
+  { id: 'ear_l', label: '左耳', kind: 'glabrous', density: 160, acuity: 10, baseT: 33.0, rth: 0.70, tauF: 1.6, tauS: 14, area: 12, appendage: 'catEar', ticklish: true },
+  { id: 'ear_r', label: '右耳', kind: 'glabrous', density: 160, acuity: 10, baseT: 33.0, rth: 0.70, tauF: 1.6, tauS: 14, area: 12, appendage: 'catEar', ticklish: true },
+]
+
 export const REGIONS = [
   // ── 手 ───────────────────────────────────────────
   { id: 'index_tip',  label: '食指尖', kind: 'glabrous', density: 241, acuity: 2.3, baseT: 31.0, rth: 0.85, tauF: 2.0, tauS: 18, area: 2 },
@@ -152,13 +165,39 @@ export function frictionOf(forceN, mu0 = 0.6) {
 }
 
 export class Touch extends Channel {
+  /** 运行时开关附加器官：保留已有分区的状态，只增删尾巴/猫耳那几块 */
+  setExtras(next = {}) {
+    const want = { tail: next.tail === true, catEars: next.catEars === true };
+    const changed = want.tail !== this.extras.tail || want.catEars !== this.extras.catEars;
+    this.extras = want;
+    if (!changed) return;
+    const keep = new Map(this.regions.map((r) => [r.id, r]));
+    const base = [...REGIONS, ...EXTRA_REGIONS]
+      .filter((r) => this.intimate || !r.intimate)
+      .filter((r) => !r.appendage || (r.appendage === 'catEar' ? this.extras.catEars : this.extras[r.appendage]));
+    this.regions = base.map((r) => keep.get(r.id) ?? this._mkRegion(r));
+    this.setPose(this.pose);
+  }
+
+  _mkRegion(r) {
+    return {
+      ...r, refArea: r.area, P: 0, objT: null, eObj: null, barF: 0, barS: 0,
+      T: r.baseT, thermBar: 0, since: null, gain: 1, pWeight: 0, ct: 0, slip: 0,
+      painNow: 0, painLoad: 0, depth: 0, contact: null, air: 0,
+    };
+  }
+
   constructor(opts = {}) {
     super('touch');
     this.gain = opts.gain ?? 1.0;
     this.intimate = opts.intimate !== false;
     this.weight = opts.weight ?? 50;   // kg
     this.pose = opts.pose ?? 'standing';
-    this.regions = REGIONS.filter((r) => this.intimate || !r.intimate).map((r) => ({
+    this.extras = { tail: opts.tail === true, catEars: opts.catEars === true };
+    this.regions = [...REGIONS, ...EXTRA_REGIONS]
+      .filter((r) => this.intimate || !r.intimate)
+      .filter((r) => !r.appendage || (r.appendage === 'catEar' ? this.extras.catEars : this.extras[r.appendage]))
+      .map((r) => ({
       ...r,
       refArea: r.area,
       P: 0,          // 压强 N/cm²
@@ -237,6 +276,7 @@ export class Touch extends Channel {
       return true;
     }
     if (ev.type === 'attend') {
+      if (!ev.part) return false;
       const r = this.region(ev.part);
       r.gain = ev.gain ?? 2.2;
       return true;
@@ -266,8 +306,11 @@ export class Touch extends Channel {
   step(h, ctx) {
     // 激素在这一层只做一件事：改常数。皮质醇高 → 同样的痛更痛（痛觉敏化）
     const hor = ctx?.endocrine;
-    const painGain = hor?.painGain ?? 1;
+    const br = ctx?.brain;
+    const painGain = (hor?.painGain ?? 1) * (br?.painMod ?? 1) * (ctx?.cycle?.painGain ?? 1);
     const comfortGain = hor?.comfortGain ?? 1;
+    // 注意落在哪：那处变响，别处被压下去。改的是读出来的强度，不是感受器本身
+    this._g = { focus: br?.focus ?? null, boost: br?.focusBoost ?? 1, cut: br?.otherCut ?? 1 };
     for (const r of this.regions) {
       const S = this.transduce(r.P + r.pWeight);
       r.barF += (S - r.barF) * (h / r.tauF);
@@ -341,8 +384,11 @@ export class Touch extends Channel {
 
   read() {
     const t = this.body?.t ?? 0;
+    const fg = this._g ?? { focus: null, boost: 1, cut: 1 };
     return this.regions.map((r) => {
-      const g = (r.gain ?? 1) * this.gain * (r.ticklish ?? 1);
+      // 注意的增益：盯着的地方更响，没盯着的退到背景里
+      const att = r.id === fg.focus ? fg.boost : fg.cut;
+      const g = (r.gain ?? 1) * this.gain * (r.ticklish ?? 1) * att;
       const S = this.transduce(r.P + r.pWeight);
       const RA = g * (S - r.barF);
       const SA = g * 0.6 * (S - r.barS);
@@ -357,9 +403,9 @@ export class Touch extends Channel {
         temp: r.T,
         held: r.since == null ? 0 : t - r.since,
         area: r.refArea,
-        pain: r.painNow,
+        pain: Math.min(1, r.painNow * (r.id === fg.focus ? fg.boost : fg.cut)),
         painLoad: r.painLoad,
-        ct: r.ct,
+        ct: r.ct * (r.id === fg.focus ? fg.boost : fg.cut),
         slip: r.slip,
       };
     });

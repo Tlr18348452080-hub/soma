@@ -59,10 +59,24 @@ export class Body {
   }
 
   // ── 另一条：时间 ────────────────────────────────────
+  // 步长不是常数。身上有动静的时候走细（触摸的 τ 只有几秒），
+  // 安安静静的时候走粗（睡七小时没必要切成五十万份）。
+  busy(ctx) {
+    const t = ctx?.touch;
+    if (Array.isArray(t)) {
+      for (const r of t) {
+        if (Math.abs(r.pressure) > 1e-3) return true;
+        if (r.pain > 1e-3) return true;
+        if (r.ct > 1e-3) return true;
+      }
+    }
+    return false;
+  }
+
   step(dt) {
-    const sub = 0.05;
-    let acc = 0;
     const ctx = this.snapshot();
+    const sub = this.busy(ctx) ? 0.05 : Math.min(60, Math.max(0.05, dt / 300));
+    let acc = 0;
     while (acc < dt - 1e-9) {
       const h = Math.min(sub, dt - acc);
       acc += h;

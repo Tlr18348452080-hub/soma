@@ -38,6 +38,8 @@ export class Endocrine extends Channel {
     this.cortisol = BASE.cortisol;
     this.adrenaline = BASE.adrenaline;
     this.dopamine = BASE.dopamine;
+    this.baseCortisol = BASE.cortisol;
+    this.stressLoad = 0;   // 累积应激，慢变量。痛觉敏化跟它走，不跟瞬时皮质醇走
   }
 
   apply(ev) {
@@ -46,6 +48,7 @@ export class Endocrine extends Channel {
         // 急性应激：皮质醇慢慢起，肾上腺素立刻起
         const l = clamp(Number(ev.level ?? 0.5), 0, 1);
         this.cortisol = clamp(this.cortisol + l * 0.10, 0, 1);
+        this.stressLoad = clamp(this.stressLoad + l * 0.30, 0, 1);
         this.adrenaline = clamp(this.adrenaline + l * 0.45, 0, 1);
         return true;
       }
@@ -73,17 +76,26 @@ export class Endocrine extends Channel {
     if (Array.isArray(t)) {
       let pain = 0;
       for (const r of t) if (r.pain > pain) pain = r.pain;
-      if (pain > 0.15) this.cortisol = clamp(this.cortisol + pain * 0.0004 * h, 0, 1);
+      if (pain > 0.15) {
+        this.cortisol = clamp(this.cortisol + pain * 0.0004 * h, 0, 1);
+        this.stressLoad = clamp(this.stressLoad + pain * 0.0008 * h, 0, 1);
+      }
     }
 
+    // 皮质醇的基线不是常数——它跟着昼夜节律走，醒后半小时有个晨峰
+    this.baseCortisol = BASE.cortisol * (ctx?.rhythm?.cortisolMod ?? 1);
+    this.stressLoad += (0 - this.stressLoad) * Math.min(1, h / 10800);
     for (const k of ['cortisol', 'adrenaline', 'dopamine']) {
-      this[k] += (BASE[k] - this[k]) * Math.min(1, h / TAU[k]);
+      const b = k === 'cortisol' ? this.baseCortisol : BASE[k];
+      this[k] += (b - this[k]) * Math.min(1, h / TAU[k]);
     }
   }
 
   read() {
     // 增益按「基线 = 1.0」归一化，这样没激素的时候身体还是原来的身体
-    const painGain = clamp(0.55 + 2.25 * this.cortisol, 0.55, 2.0);
+    // 痛觉敏化跟「累积应激」走，不跟瞬时皮质醇走。
+    // 这样晨峰不会把人变敏感——正常起床不是创伤。
+    const painGain = clamp(1 + 1.2 * this.stressLoad, 0.8, 2.2);
     const comfortGain = clamp(0.40 + 1.33 * this.dopamine, 0.40, 1.60);
     // 基线 = 1.0：多巴胺掉一截就提不起劲，皮质醇升一截就做什么都费劲
     const motivation = clamp(1 + 1.0 * (this.dopamine - BASE.dopamine) - 0.9 * (this.cortisol - BASE.cortisol), 0.15, 1.15);
@@ -95,6 +107,7 @@ export class Endocrine extends Channel {
       comfortGain,
       motivation,
       alert: this.adrenaline,
+      stressLoad: this.stressLoad,
     };
   }
 }

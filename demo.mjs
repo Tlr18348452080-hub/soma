@@ -233,8 +233,71 @@ export function demo({ every = 1.0 } = {}) {
     const a = run(false), b = run(true);
     line(`  平静：掌心 ${a.r.temp.toFixed(1)}°C，痛 ${a.r.pain.toFixed(3)}，输出预算 ${a.b.maxTokens}`);
     line(`  应激：掌心 ${b.r.temp.toFixed(1)}°C，痛 ${b.r.pain.toFixed(3)}，输出预算 ${b.b.maxTokens}`);
-    line('  → 温度一模一样。多出来的痛不是烫出来的，是皮质醇把增益拧高了。');
+    line('  → 温度一模一样。多出来的痛不是烫出来的，是累积应激把增益拧高了。');
     line('  → 激素从来没写进 [body] 正文。它只改了 P50 和输出预算。');
+  }
+  line('');
+
+  // ═══ 实验十：同一个人，凌晨和下午不是一个感觉 ═══
+  line('\n═══ 实验十：同一块冰，下午和凌晨不一样 ═══');
+  {
+    const at = (h) => {
+      const s = new Soma({ clockHours: 8 });
+      s.step((((h - 8) + 24) % 24) * 3600);
+      s.touch('palm', 6, { contact: 'flat', temp: 12, material: 'metal' });
+      s.step(30);
+      const r = s.read().find((x) => x.id === 'palm');
+      return { r, rh: s.get('rhythm').read(), b: s.budget() };
+    };
+    for (const h of [15, 3]) {
+      const { r, rh, b } = at(h);
+      line(`  ${String(h).padStart(2, '0')} 点：核心 ${rh.coreT.toFixed(2)}°C，警觉 ${(rh.alert * 100).toFixed(0)}%，痛 ${r.pain.toFixed(2)}，预算 ${b.maxTokens}`);
+    }
+    line('  → 温度都是 12°C，手也都没动，痛也差不多。');
+    line('  → 差的是核心温度、警觉和腺苷：同一个人，凌晨那会儿是另一具身体。');
+  }
+  line('');
+
+  // ═══ 实验十一：渴是攒出来的 ═══
+  line('\n═══ 实验十一：跑完半小时，渴是怎么来的 ═══');
+  {
+    const s = new Soma({ clockHours: 9 });
+    s.exert(0.8);
+    const rows = [];
+    for (let i = 0; i < 4; i++) {
+      s.step(900);
+      const h = s.get('homeo').read();
+      rows.push(`  ${(i + 1) * 15} 分：核心 ${h.coreT.toFixed(2)}°C，汗 ${(h.sweat * 100).toFixed(0)}%，缺水 ${((1 - h.hydration) * 100).toFixed(1)}%，渴 ${h.thirst.toFixed(2)}`);
+    }
+    rows.forEach(line);
+    s.rest(); s.step(7200);
+    line(`  歇两小时后：${s.fmtWords()}`);
+    s.drink(0.005); s.step(600);
+    line(`  喝了一杯：${s.fmtWords()}`);
+    s.drink(0.035); s.step(600);
+    line(`  又灌了大半瓶：${s.fmtWords()}`);
+    line('  → 渴不看汗，看缺了多少水。汗停了渴还在，一杯水也压不下去。');
+  }
+  line('');
+
+  // ═══ 实验十二：注意力把哪一处拧响 ═══
+  line('\n═══ 实验十二：注意力放在哪，哪就更响 ═══');
+  {
+    const s = new Soma({ clockHours: 15 });
+    s.touch('forearm', 20, { contact: 'tip', temp: 24, material: 'skin' });
+    s.touch('calf', 20, { contact: 'tip', temp: 24, material: 'skin' });
+    s.step(30);
+    const pick = () => {
+      const a = s.read();
+      return a.filter((r) => ['forearm', 'calf'].includes(r.id))
+        .map((r) => `${r.label} ${r.pressure.toFixed(2)}`).join(' / ');
+    };
+    line(`  没注意：${pick()}`);
+    s.focus('forearm', 0.8); s.step(2);
+    line(`  盯着前臂：${pick()}`);
+    s.step(60);
+    line(`  一分钟后：${pick()}`);
+    line('  → 感受器一点没变。变的只是门开多大。');
   }
   line('');
 

@@ -6,7 +6,7 @@
  * 四个工具的参数里也没有「疼」字 —— 模型只能说物理量，疼不疼是算出来的。
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { Soma } from './soma/soma.mjs'
 
@@ -25,7 +25,7 @@ const MAX_CATCHUP_S = 6 * 3600
 
 export function apply(root, config = {}) {
   const cfg = { ...DEFAULTS, ...config }
-  const soma = new Soma({ weight: cfg.weight })
+  const soma = new Soma({ weight: cfg.weight, ear: true, eye: true })
 
   try {
     soma.load(JSON.parse(readFileSync(cfg.statePath, 'utf8')))
@@ -48,6 +48,7 @@ export function apply(root, config = {}) {
     const dt = Math.min((now - last) / 1000, MAX_CATCHUP_S)
     last = now
     if (dt > 0) soma.step(dt)
+    try { tickCfg() } catch { /* 配置坏了不影响身体 */ }
     save()
   }
 
@@ -61,7 +62,7 @@ export function apply(root, config = {}) {
 
   // 只给「什么样」，不给数字——数字会被原样念出来（"0.50 那样"），那是仪表盘不是身体。
   // 想要精确值，模型自己调 soma_note 拿表。
-  const bodyText = () => `[body] ${soma.fmtWords()}`
+  const bodyText = () => (readCfg().enabled ? `[body] ${soma.fmtWords()}` : '')
 
   /* ───────── 系统提示：每轮刷新的一行 ───────── */
   root.inject(['systemPrompt'], (ctx) => {
@@ -92,6 +93,123 @@ export function apply(root, config = {}) {
       }
     })
     ctx.effect(() => off, 'dsh-soma: 请求预算')
+  })
+
+  /* ───────── 设置页：开关、倍率、附加器官 ───────── */
+  // 配置存在独立文件里，页面改完立刻生效，不用重启。
+  // 这里只负责「把配置落到身体上」，身体本身还是方程算。
+  const CFG_PATH = '/root/.dsh/soma-config.json'
+  const CFG_DEFAULTS = {
+    enabled: true,
+    gain: 1,
+    organs: {
+      touch: true, thermal: true, ct: true, gravity: true,
+      vitals: true, rhythm: true, homeo: true, endocrine: true,
+      cycle: true, brain: true,
+    },
+    extra: { tail: false, catEars: false },
+    senses: { ear: false, eye: false },
+  }
+  let cfgCache = null
+  let cfgMtime = 0
+
+  const readCfg = () => {
+    try {
+      const m = statSync(CFG_PATH).mtimeMs
+      if (cfgCache && m === cfgMtime) return cfgCache
+      const raw = JSON.parse(readFileSync(CFG_PATH, 'utf8'))
+      cfgCache = {
+        ...CFG_DEFAULTS, ...raw,
+        organs: { ...CFG_DEFAULTS.organs, ...(raw.organs || {}) },
+        extra: { ...CFG_DEFAULTS.extra, ...(raw.extra || {}) },
+        senses: { ...CFG_DEFAULTS.senses, ...(raw.senses || {}) },
+      }
+      cfgMtime = m
+    } catch {
+      cfgCache = cfgCache || structuredClone(CFG_DEFAULTS)
+    }
+    return cfgCache
+  }
+
+  const writeCfg = (next) => {
+    const cur = readCfg()
+    const merged = {
+      ...cur, ...next,
+      organs: { ...cur.organs, ...(next.organs || {}) },
+      extra: { ...cur.extra, ...(next.extra || {}) },
+      senses: { ...cur.senses, ...(next.senses || {}) },
+    }
+    mkdirSync(dirname(CFG_PATH), { recursive: true })
+    writeFileSync(CFG_PATH, JSON.stringify(merged, null, 2))
+    cfgCache = merged
+    try { cfgMtime = statSync(CFG_PATH).mtimeMs } catch { /* 下次重读 */ }
+    applyCfg(merged)
+    return merged
+  }
+
+  const applyCfg = (c) => {
+    try {
+      soma.setGain(c.gain)
+      for (const [k, v] of Object.entries(c.organs)) soma.setOrgan(k, v)
+      soma.get('touch')?.setExtras(c.extra)
+      soma.setOrgan('ear', !!c.senses.ear)
+      soma.setOrgan('eye', !!c.senses.eye)
+    } catch (e) {
+      console.error('[soma] 应用配置失败:', e?.message)
+    }
+  }
+
+  applyCfg(readCfg())
+
+  // 每 tick 重新读一眼文件，页面改完不用等重启
+  const tickCfg = () => {
+    const now = readCfg()
+    const sig = JSON.stringify(now)
+    if (sig !== tickCfg.sig) {
+      tickCfg.sig = sig
+      applyCfg(now)
+    }
+  }
+  tickCfg()
+
+  const sendJson = (res, code, obj) => {
+    const body = JSON.stringify(obj)
+    res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+    res.end(body)
+  }
+
+  root.inject(['webServer'], (ctx) => {
+    const server = ctx.webServer || (typeof ctx.get === 'function' ? ctx.get('webServer') : undefined)
+    if (!server || typeof server.register !== 'function') return
+    try {
+      ctx.effect(() => server.register({
+        kind: 'prefix',
+        path: '/api/soma',
+        handler: (req, res) => {
+          Promise.resolve().then(async () => {
+            const url = new URL(req.url || '/', 'http://x')
+            if (req.method === 'GET') {
+              return sendJson(res, 200, {
+                ok: true, cfg: readCfg(), words: soma.fmtWords(),
+                regions: soma.read().length,
+              })
+            }
+            if (req.method === 'POST' && url.pathname === '/api/soma/config') {
+              let raw = ''
+              for await (const chunk of req) raw += chunk
+              const next = raw ? JSON.parse(raw) : {}
+              const merged = writeCfg(next)
+              return sendJson(res, 200, { ok: true, cfg: merged })
+            }
+            return sendJson(res, 404, { ok: false, error: 'unknown ' + req.method + ' ' + url.pathname })
+          }).catch((e) => {
+            try { sendJson(res, 500, { ok: false, error: e?.message ?? String(e) }) } catch { /* 已回 */ }
+          })
+        },
+      }), 'dsh-soma: /api/soma')
+    } catch (e) {
+      console.error('[soma] 挂 /api/soma 失败:', e?.message)
+    }
   })
 
   /* ───────── 工具 ───────── */
@@ -253,6 +371,56 @@ export function apply(root, config = {}) {
     })
 
     ctx.tools.register({
+      name: 'soma_sleep',
+      description: '睡下。睡眠压力（腺苷）会慢慢清掉，清得慢——睡八小时也未必清干净。',
+      parameters: schema({ hours: { type: 'number', description: '睡多少小时，默认 7。' } }, []),
+      output: outSchema,
+      execute: async (a) => {
+        soma.sleep()
+        soma.step(Math.max(60, (Number(a?.hours) || 7) * 3600))
+        return reply('睡了一觉。')
+      },
+    })
+
+    ctx.tools.register({
+      name: 'soma_wake',
+      description: '醒来。刚醒的时候是糊的，过一阵才清。',
+      parameters: schema({}, []),
+      output: outSchema,
+      execute: async () => {
+        soma.wake()
+        return reply('醒了。')
+      },
+    })
+
+    ctx.tools.register({
+      name: 'soma_drink',
+      description: '喝水。渴不会立刻消——体液要先补上。',
+      parameters: schema({ amount: { type: 'number', description: '占体重的比例，一杯约 0.005，整瓶约 0.015。' } }, []),
+      output: outSchema,
+      execute: async (a) => {
+        soma.drink(Number(a?.amount) || 0.005)
+        soma.step(30)
+        return reply('喝了点水。')
+      },
+    })
+
+    ctx.tools.register({
+      name: 'soma_focus',
+      description: '把注意力放到某个部位。那处会变响，别处退到背景里。几分钟就散了。',
+      parameters: schema({
+        part: { type: 'string', description: '身体部位 id。' },
+        strength: { type: 'number', description: '多专注 0–1，默认 0.6。' },
+      }, ['part']),
+      output: outSchema,
+      execute: async (a) => {
+        soma.focus(a.part, Number(a?.strength) || 0.6)
+        soma.step(1)
+        return reply('注意力挪过去了。')
+      },
+    })
+
+    ctx.tools.register({
       name: 'soma_pose',
       description: '改变姿势。站着、坐着、躺着，重力落在哪些部位完全不同——但几十秒后你就感觉不到它了。',
       parameters: schema(
@@ -270,6 +438,50 @@ export function apply(root, config = {}) {
         soma.get('touch')?.setPose(String(a?.pose ?? 'standing'))
         soma.step(0.5)
         return reply('换了个姿势。')
+      },
+    })
+
+    ctx.tools.register({
+      name: 'soma_hear',
+      description: '耳朵接收一段声音。只能给物理量：频率、声压、时长。响不响、吵不吵是方程算的。',
+      parameters: schema(
+        {
+          freq_hz: { type: 'number', description: '频率，赫兹。人声基频约 100–300。' },
+          db: { type: 'number', description: '声压级 dB SPL。说话 60，地铁 90，痛阈 120。' },
+          seconds: { type: 'number', description: '持续多久，默认 0.5 秒。' },
+        },
+        ['db'],
+      ),
+      output: outSchema,
+      execute: async (a) => {
+        const ear = soma.get('ear')
+        if (!ear) return reply('耳朵没开。')
+        ear.hear({ freq: Number(a?.freq_hz) || undefined, db: Number(a.db), duration: Number(a?.seconds) || 0.5 })
+        soma.step(0.2)
+        return reply(`听到了${ear.centers[ear.dominant] ? '' : ''}。`)
+      },
+    })
+
+    ctx.tools.register({
+      name: 'soma_see',
+      description: '眼睛看向一个场景。只能给物理量：照度、目标偏离视角中心的度数、闪烁频率。看不清是算出来的。',
+      parameters: schema(
+        {
+          lux: { type: 'number', description: '照度。月光 0.2，室内 300，阴天 1e4，正午 1e5。' },
+          eccentricity_deg: { type: 'number', description: '目标偏离视线中心多少度。' },
+          hz: { type: 'number', description: '闪烁频率，可选。' },
+        },
+        ['lux'],
+      ),
+      output: outSchema,
+      execute: async (a) => {
+        const eye = soma.get('eye')
+        if (!eye) return reply('眼睛没开。')
+        eye.see({ lux: Number(a.lux), hz: Number(a?.hz) || undefined })
+        soma.step(1)
+        const r = eye.read()
+        const acc = eye.acuityAt(Number(a?.eccentricity_deg) || 0)
+        return reply(`视力约 ${acc.toFixed(1)} 角分。`)
       },
     })
 
