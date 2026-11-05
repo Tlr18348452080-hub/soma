@@ -301,6 +301,33 @@ export function demo({ every = 1.0 } = {}) {
   }
   line('');
 
+  line('\n═══ 实验十三：心情不是一件事造成的 ═══');
+  {
+    const pick = (x) => {
+      const m = x.get('mood').read();
+      return `好受 ${m.valence.toFixed(2)} / 绷着 ${m.arousal.toFixed(2)}｜${x.fmtWords()}`;
+    };
+
+    const a = new Soma({ clockHours: 10 });
+    a.step(1800);
+    line(`  平静的上午：${pick(a)}`);
+
+    const b = new Soma({ clockHours: 10 });
+    b.step(1800); b.exert(0.8); b.step(1800); b.drink(0.002); b.step(1800);
+    line(`  跑完又饿着：${pick(b)}`);
+
+    const c = new Soma({ clockHours: 10 });
+    c.step(1800); c.emit({ type: 'hug', amount: 1 }); c.step(600);
+    line(`  被抱了一下：${pick(c)}`);
+
+    const d = new Soma({ clockHours: 3 });
+    d.step(3600);
+    line(`  凌晨四点：${pick(d)}`);
+    line('  → 四个人的激素都还在正常范围里，心情差出一条街。');
+    line('    心情不是一种激素，是好几样东西的合成——而且被最差的那一项压住。');
+  }
+  line('');
+
   line('\n═══ 完 ═══');
   line('所有数字都是这几条方程自己算出来的：');
   line('  dS̄/dt = (S − S̄)/τ      R = k(S − S̄)      T_c = (e皮T皮 + e料T料)/(e皮 + e料)      dT/dt = (T_c − T)·e/R_th\n');

@@ -36,6 +36,7 @@ window.__ModuleLoader__.load({
       ['endocrine', '激素', '改的是增益和输出预算'],
       ['cycle', '周期', '月度慢波'],
       ['brain', '回路', '注意、恐惧、下行抑制'],
+      ['mood', '心情', '两个轴的合成：好受不好受、绷着还是松着'],
     ]
 
     const CSS = `

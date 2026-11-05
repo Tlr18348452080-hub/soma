@@ -66,6 +66,7 @@ export class Rhythm extends Channel {
     // 皮质醇晨峰：醒来后 30 分钟内到顶，比基线高 50–75% [S]（PMID 9416776）。
     // 所以它跟"醒了多久"走，不跟钟走。
     const car = Math.exp(-Math.pow((this.awake - 1800) / 1200, 2));
+    const cDay = 0.5 - 0.5 * Math.cos(TWO_PI * (p - 20 / 24));
     // 褪黑素：天黑后起，凌晨 3 点前后最高 [S]
     const melatonin = 0.5 - 0.5 * Math.cos(TWO_PI * (p - 3 / 24));
     // 昼夜那一路：只在那个谷上建模，白天接近满值。
@@ -80,7 +81,9 @@ export class Rhythm extends Channel {
       clock: this.clock % DAY,
       phase: p,
       coreT,
-      cortisolMod: 1 + 0.62 * car,
+      // 皮质醇有昼夜基线：夜里只剩白天的两成左右 [G]（PMID 26663024），
+      // 谷在 22–23 点，晨峰叠在它上面 [A]（PMID 9146822）
+      cortisolMod: (0.16 + 0.84 * cDay) * (1 + 0.62 * car),
       melatonin,
       adenosine: this.adenosine,
       alert,

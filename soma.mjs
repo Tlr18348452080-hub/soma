@@ -17,6 +17,9 @@ import { Rhythm } from './channels/rhythm.mjs';
 import { Homeo } from './channels/homeo.mjs';
 import { Brain } from './channels/brain.mjs';
 import { Cycle } from './channels/cycle.mjs';
+import { Mood } from './channels/mood.mjs';
+
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 import { Ear } from './channels/ear.mjs';
 import { Eye } from './channels/eye.mjs';
 
@@ -31,6 +34,7 @@ export class Soma extends Body {
     this.use(new Rhythm(opts));  // 昼夜节律与睡眠压力
     this.use(new Homeo());       // 水、热、呼吸
     this.use(new Brain());       // 注意、恐惧、下行抑制
+    this.use(new Mood());        // 心情：别的层的和，不是新信息
     if (opts.cycle !== false) this.use(new Cycle(opts));  // 月度慢波
     if (opts.ear) this.use(new Ear(opts));   // 耳蜗：滤波器组，输出的是谱
     if (opts.eye) this.use(new Eye(opts));   // 视网膜：暗适应、中央凹、视野
@@ -201,6 +205,13 @@ export class Soma extends Body {
     if (hm && hm.thirst > 0.15) deep.push(tier(hm.thirst, TH));
     const rh = on('rhythm') ? this.get('rhythm')?.read() : null;
     if (rh && !rh.asleep && rh.alert < 0.35) deep.push(tier(rh.alert, SL));
+    const md = on('mood') ? this.get('mood')?.read() : null;
+    if (md) {
+      if (md.valence <= -0.45) deep.push('心里堵得慌');
+      else if (md.valence <= -0.15) deep.push('心里有点沉');
+      else if (md.valence >= 0.45) deep.push('心里挺亮');
+      if (md.irritability > 0.55) deep.push('有点烦');
+    }
 
     const out = [];
     if (skin.length) out.push(skin.join('，'));
@@ -250,7 +261,9 @@ export class Soma extends Body {
     const pain = Math.max(0, ...this.read().map((r) => r.pain));
     const drain = Math.min(1, 0.6 * v.fatigue + 0.25 * Math.max(0, v.hunger - 0.6) + 0.5 * pain);
     const e = this.muted.has('endocrine') ? null : this.get('endocrine')?.read();
-    const motivation = e?.motivation ?? 1;
+    const md = this.get('mood')?.read();
+    const moodMod = md ? clamp(0.75 + 0.35 * md.valence, 0.55, 1.1) : 1;
+    const motivation = (e?.motivation ?? 1) * moodMod;
     const base = 300 + 700 * (1 - drain);
     return {
       maxTokens: Math.round(base * motivation),          // 累/饿/疼 → 话变短；提不起劲 → 再短

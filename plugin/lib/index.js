@@ -170,7 +170,7 @@ export function apply(root, config = {}) {
     organs: {
       touch: true, thermal: true, ct: true, gravity: true,
       vitals: true, rhythm: true, homeo: true, endocrine: true,
-      cycle: true, brain: true,
+      cycle: true, brain: true, mood: true,
     },
     extra: { tail: false, catEars: false },
     senses: { ear: false, eye: false },
@@ -549,6 +549,23 @@ export function apply(root, config = {}) {
         const r = eye.read()
         const acc = eye.acuityAt(Number(a?.eccentricity_deg) || 0)
         return reply(`视力约 ${acc.toFixed(1)} 角分。`)
+      },
+    })
+
+    ctx.tools.register({
+      name: 'soma_hug',
+      description: '被人抱住、或者被认真夸了一句。只有这类社交接触能顶上来一点，而且过一会儿就退。',
+      parameters: schema(
+        {
+          amount: { type: 'number', description: '0–1。随手拍一下 0.3，抱一下 0.8，被认真夸 0.6。' },
+        },
+        [],
+      ),
+      output: outSchema,
+      execute: async (a) => {
+        soma.emit({ type: 'hug', amount: Math.max(0, Math.min(1, Number(a?.amount) || 0.6)) })
+        soma.step(30)
+        return reply('记下了。')
       },
     })
 

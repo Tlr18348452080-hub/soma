@@ -23,13 +23,21 @@ import { Channel } from '../core.mjs';
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
 // 基线。人是不会归零的——皮质醇有晨峰，多巴胺有紧张性水平 [A]
-const BASE = { cortisol: 0.20, adrenaline: 0.05, dopamine: 0.45 };
+const BASE = {
+  cortisol: 0.20, adrenaline: 0.05, dopamine: 0.45,
+  serotonin: 0.50,   // 白天高、夜里低；它是「日照出来的」，不是「想出来的」[A]
+  oxytocin: 0.30,    //  sociaux 事件顶上来，几分钟就退
+  melatonin: 0.05,   // 夜里起，白天几乎为零
+};
 
 // 一阶回归的时间常数（秒）
 const TAU = {
-  cortisol: 2400,   // 40 分钟。HPA 轴慢，还得穿过血脑屏障 [A]
-  adrenaline: 120,  // 2 分钟。交感神经，来得快去得也快 [A]
-  dopamine: 720,    // 12 分钟。紧张性（tonic）水平，不是相位性放电 [A]
+  cortisol: 2400,    // 40 分钟。HPA 轴慢，还得穿过血脑屏障 [A]
+  adrenaline: 120,   // 2 分钟。交感神经，来得快去得也快 [A]
+  dopamine: 720,     // 12 分钟。紧张性（tonic）水平，不是相位性放电 [A]
+  serotonin: 5400,   // 90 分钟。它是合成与释放的慢平衡，不是一次放电 [G]
+  oxytocin: 1800,    // 30 分钟。社交事件后的尾巴 [G]
+  melatonin: 1800,   // 30 分钟。松果体分泌，起得慢 [A]
 };
 
 export class Endocrine extends Channel {
@@ -38,6 +46,10 @@ export class Endocrine extends Channel {
     this.cortisol = BASE.cortisol;
     this.adrenaline = BASE.adrenaline;
     this.dopamine = BASE.dopamine;
+    this.serotonin = BASE.serotonin;
+    this.oxytocin = BASE.oxytocin;
+    this.melatonin = BASE.melatonin;
+    this.nightShift = 0;   // 由昼夜通道灌进来，供 read() 用
     this.baseCortisol = BASE.cortisol;
     this.stressLoad = 0;   // 累积应激，慢变量。痛觉敏化跟它走，不跟瞬时皮质醇走
   }
@@ -58,6 +70,13 @@ export class Endocrine extends Channel {
         // 这一条是 [G]，别当多巴胺的机理看。
         const a = clamp(Number(ev.amount ?? 0.5), 0, 1);
         this.dopamine = clamp(this.dopamine + a * 0.25, 0, 1);
+        return true;
+      }
+      case 'hug':
+      case 'praise': {
+        // 社交接触 / 被认可。效应随时间退，不是存起来
+        const a = clamp(Number(ev.amount ?? 0.5), 0, 1);
+        this.oxytocin = clamp(this.oxytocin + a * 0.30, 0, 1);
         return true;
       }
       case 'exert': {
@@ -84,9 +103,14 @@ export class Endocrine extends Channel {
 
     // 皮质醇的基线不是常数——它跟着昼夜节律走，醒后半小时有个晨峰
     this.baseCortisol = BASE.cortisol * (ctx?.rhythm?.cortisolMod ?? 1);
+    // 昼夜对激素的驱动：褪黑素跟着「天黑了没有」走，血清素跟着「天亮着」走
+    const night = clamp(ctx?.rhythm?.melatonin ?? 0, 0, 1);
+    this.nightShift = night;
+    const target = { ...BASE, cortisol: this.baseCortisol, melatonin: 0.05 + 0.85 * night,
+      serotonin: 0.18 + 0.62 * (1 - night) };
     this.stressLoad += (0 - this.stressLoad) * Math.min(1, h / 10800);
-    for (const k of ['cortisol', 'adrenaline', 'dopamine']) {
-      const b = k === 'cortisol' ? this.baseCortisol : BASE[k];
+    for (const k of Object.keys(TAU)) {
+      const b = target[k] ?? BASE[k];
       this[k] += (b - this[k]) * Math.min(1, h / TAU[k]);
     }
   }
@@ -108,6 +132,11 @@ export class Endocrine extends Channel {
       motivation,
       alert: this.adrenaline,
       stressLoad: this.stressLoad,
+      serotonin: this.serotonin,
+      oxytocin: this.oxytocin,
+      melatonin: this.melatonin,
+      // 褪黑素本身不是「困」，它是「天黑了」的化学读数；困由腺苷负责
+      nightShift: this.nightShift,
     };
   }
 }
