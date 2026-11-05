@@ -192,7 +192,7 @@ export class Soma extends Body {
       if (v.hunger > 0.5) deep.push(tier(v.hunger, H));
       if (v.hr > 85) deep.push(tier(v.hr, HR));
     }
-    const e = on('endocrine') ? this.get('endocrine')?.read() : null;
+    const e = this.muted.has('endocrine') ? null : this.get('endocrine')?.read();
     if (e) {
       if (e.motivation < 0.55) deep.push('提不起劲');
       else if (e.alert > 0.55) deep.push('绷着');
@@ -249,7 +249,7 @@ export class Soma extends Body {
     const v = this.get('vitals')?.read() ?? { fatigue: 0, hunger: 0, hr: 65 };
     const pain = Math.max(0, ...this.read().map((r) => r.pain));
     const drain = Math.min(1, 0.6 * v.fatigue + 0.25 * Math.max(0, v.hunger - 0.6) + 0.5 * pain);
-    const e = on('endocrine') ? this.get('endocrine')?.read() : null;
+    const e = this.muted.has('endocrine') ? null : this.get('endocrine')?.read();
     const motivation = e?.motivation ?? 1;
     const base = 300 + 700 * (1 - drain);
     return {
