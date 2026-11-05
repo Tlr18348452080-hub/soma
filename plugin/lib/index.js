@@ -42,6 +42,70 @@ export function apply(root, config = {}) {
     }
   }
 
+  /* ───────── 作息：到点睡、到点醒 ─────────
+     跟真实钟走，不是为了"演一个有作息的人"，是因为昼夜节律本来就在改
+     核心温度、警觉和腺苷。关掉自动，它就一直是醒着的。          */
+
+  const parseHM = (t, fallback) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim())
+    if (!m) return fallback
+    return Math.min(23, Number(m[1])) * 3600 + Math.min(59, Number(m[2])) * 60
+  }
+
+  const inNight = (secOfDay, bed, wake) => {
+    if (bed === wake) return false
+    return bed > wake ? (secOfDay >= bed || secOfDay < wake) : (secOfDay >= bed && secOfDay < wake)
+  }
+
+  const liveAgents = []
+  const nudgeWake = () => {
+    const text = '【作息】到点了，刚醒。现在不是最好的状态——反应慢半拍，说话也短。先看一眼 soma_note 再开口。'
+    for (const a of liveAgents) {
+      try {
+        if (a?.status !== 'idle') continue
+        a.followup({
+          id: `soma-wake-${Date.now()}`,
+          role: 'user',
+          content: [{ type: 'text', text }],
+        })
+        return true
+      } catch { /* 投递失败不该影响身体 */ }
+    }
+    return false
+  }
+
+  let lastWakeDay = null
+  const rhythmTick = () => {
+    const c = readCfg()
+    const rh = soma.get('rhythm')
+    if (!rh || !c.enabled || !c.rhythm?.auto) return
+    const r = rh.read()
+    const sec = ((r.clock % 86400) + 86400) % 86400
+    const bed = parseHM(c.rhythm.bedTime, 23.5 * 3600)
+    const wake = parseHM(c.rhythm.wakeTime, 7 * 3600)
+    const night = inNight(sec, bed, wake)
+
+    if (night && !r.asleep) {
+      soma.sleep()
+      return
+    }
+    if (!night && r.asleep) {
+      soma.wake()
+      const day = new Date().toISOString().slice(0, 10)
+      if (c.rhythm.nudge && lastWakeDay !== day) {
+        lastWakeDay = day
+        nudgeWake()
+      }
+    }
+  }
+
+  root.inject(['agents'], (ctx) => {
+    ctx.effect(() => ctx.on('agent/created', ({ agent }) => {
+      if (!ctx.agents?.roots?.().includes(agent)) return
+      liveAgents.push(agent)
+    }), 'dsh-soma: 唤醒投递')
+  })
+
   let last = Date.now()
   const tick = () => {
     const now = Date.now()
@@ -49,6 +113,7 @@ export function apply(root, config = {}) {
     last = now
     if (dt > 0) soma.step(dt)
     try { tickCfg() } catch { /* 配置坏了不影响身体 */ }
+    try { rhythmTick() } catch { /* 作息坏了也不影响身体 */ }
     save()
   }
 
@@ -109,6 +174,7 @@ export function apply(root, config = {}) {
     },
     extra: { tail: false, catEars: false },
     senses: { ear: false, eye: false },
+    rhythm: { auto: true, bedTime: '23:30', wakeTime: '07:00', nudge: true },
   }
   let cfgCache = null
   let cfgMtime = 0
@@ -123,6 +189,7 @@ export function apply(root, config = {}) {
         organs: { ...CFG_DEFAULTS.organs, ...(raw.organs || {}) },
         extra: { ...CFG_DEFAULTS.extra, ...(raw.extra || {}) },
         senses: { ...CFG_DEFAULTS.senses, ...(raw.senses || {}) },
+        rhythm: { ...CFG_DEFAULTS.rhythm, ...(raw.rhythm || {}) },
       }
       cfgMtime = m
     } catch {

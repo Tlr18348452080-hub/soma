@@ -53,6 +53,9 @@ window.__ModuleLoader__.load({
   background:#fff;transition:transform .15s;}
 [data-sm-sw][data-on]::after{transform:translateX(16px);}
 [data-sm-grid]{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;}
+[data-sm-row2]{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin:10px 0;}
+[data-sm-time]{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;color:var(--dsw-alias-label-primary,#e8eaed);}
+[data-sm-time] input{background:var(--dsw-alias-bg-secondary,rgba(255,255,255,.06));color:inherit;border:1px solid var(--dsw-alias-border-primary,rgba(255,255,255,.12));border-radius:6px;padding:3px 6px;font:inherit;}
 [data-sm-cell]{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:10px;
   border:1px solid var(--dsw-alias-border-default,rgba(128,128,128,.22));}
 [data-sm-cell][data-off]{opacity:.55;}
@@ -143,6 +146,32 @@ window.__ModuleLoader__.load({
             }))),
 
         h('div', { 'data-sm-sec': '' },
+          h('div', { 'data-sm-h': '' }, '作息'),
+          h('div', { 'data-sm-grid': '' },
+            h(Cell, {
+              label: '跟着钟走', note: '到点自己睡、到点自己醒。关掉就一直醒着',
+              on: !!(c.rhythm && c.rhythm.auto),
+              onToggle: (v) => save({ rhythm: { auto: v } }),
+            })),
+          h('div', { 'data-sm-row2': '' },
+            h(TimeField, {
+              label: '睡下',
+              value: (c.rhythm && c.rhythm.bedTime) || '23:30',
+              onCommit: (v) => save({ rhythm: { bedTime: v } }),
+            }),
+            h(TimeField, {
+              label: '醒来',
+              value: (c.rhythm && c.rhythm.wakeTime) || '07:00',
+              onCommit: (v) => save({ rhythm: { wakeTime: v } }),
+            })),
+          h('div', { 'data-sm-grid': '' },
+            h(Cell, {
+              label: '醒来提醒', note: '到点先自己醒一次，不等人开口',
+              on: !!(c.rhythm && c.rhythm.nudge),
+              onToggle: (v) => save({ rhythm: { nudge: v } }),
+            }))),
+
+        h('div', { 'data-sm-sec': '' },
           h('div', { 'data-sm-h': '' }, '感官'),
           h('div', { 'data-sm-grid': '' },
             h(Cell, {
@@ -163,6 +192,16 @@ window.__ModuleLoader__.load({
 
         msg ? h('div', { 'data-sm-note': '', 'data-warn': bad ? '' : undefined }, msg) : null,
       )
+    }
+
+    function TimeField({ label, value, onCommit }) {
+      return h('label', { 'data-sm-time': '' },
+        h('span', {}, label),
+        h('input', {
+          type: 'time',
+          value,
+          onChange: (e) => onCommit(e.target.value),
+        }))
     }
 
     return {
