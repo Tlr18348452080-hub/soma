@@ -220,6 +220,24 @@ export function demo({ every = 1.0 } = {}) {
   line('  → 这是整个模型里唯一一个"越强越舒服"的量，别处全是越强越糟。');
   line('');
 
+  // ═══ 实验九：一样的热，不一样的疼 ═══
+  line('\n═══ 实验九：同样的铁，应激的人更疼 ═══');
+  {
+    const run = (stressed) => {
+      const s = new Soma();
+      if (stressed) s.stress(1);
+      s.touch('palm', 6, { contact: 'flat', temp: 52, material: 'metal' });
+      s.step(60);
+      return { r: s.read().find((x) => x.id === 'palm'), b: s.budget() };
+    };
+    const a = run(false), b = run(true);
+    line(`  平静：掌心 ${a.r.temp.toFixed(1)}°C，痛 ${a.r.pain.toFixed(3)}，输出预算 ${a.b.maxTokens}`);
+    line(`  应激：掌心 ${b.r.temp.toFixed(1)}°C，痛 ${b.r.pain.toFixed(3)}，输出预算 ${b.b.maxTokens}`);
+    line('  → 温度一模一样。多出来的痛不是烫出来的，是皮质醇把增益拧高了。');
+    line('  → 激素从来没写进 [body] 正文。它只改了 P50 和输出预算。');
+  }
+  line('');
+
   line('\n═══ 完 ═══');
   line('所有数字都是这几条方程自己算出来的：');
   line('  dS̄/dt = (S − S̄)/τ      R = k(S − S̄)      T_c = (e皮T皮 + e料T料)/(e皮 + e料)      dT/dt = (T_c − T)·e/R_th\n');

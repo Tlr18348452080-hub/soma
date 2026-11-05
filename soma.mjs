@@ -12,6 +12,7 @@
 import { Body } from './core.mjs';
 import { Touch, REGIONS, MATERIALS } from './channels/touch.mjs';
 import { Vitals } from './channels/vitals.mjs';
+import { Endocrine } from './channels/endocrine.mjs';
 
 const EPS = 1e-6;
 
@@ -20,11 +21,18 @@ export class Soma extends Body {
     super(opts);
     this.use(new Touch(opts));
     this.use(new Vitals(opts));
+    this.use(new Endocrine());   // 激素：不改内容，只改别的通道的常数
   }
 
   get touchCh() {
     return this.get('touch');
   }
+
+  /** 应激：急了、被凶了、摔了一跤。皮质醇慢慢起，肾上腺素立刻起。 */
+  stress(level = 0.5) { return this.emit({ type: 'stress', level }); }
+
+  /** 奖励：做成了、被夸了、有新东西。这是 RPE 的粗糙代理，不是真的多巴胺机理。 */
+  reward(amount = 0.5) { return this.emit({ type: 'reward', amount }); }
 
   // 能改状态的只有这几条路。没有 set()。
   // 力是牛顿，面积是 cm²，温度是 °C。感受器吃的是压强。
@@ -139,6 +147,11 @@ export class Soma extends Body {
       if (v.hunger > 0.5) deep.push(tier(v.hunger, H));
       if (v.hr > 85) deep.push(tier(v.hr, HR));
     }
+    const e = this.get('endocrine')?.read();
+    if (e) {
+      if (e.motivation < 0.55) deep.push('提不起劲');
+      else if (e.alert > 0.55) deep.push('绷着');
+    }
 
     const out = [];
     if (skin.length) out.push(skin.join('，'));
@@ -187,11 +200,15 @@ export class Soma extends Body {
     const v = this.get('vitals')?.read() ?? { fatigue: 0, hunger: 0, hr: 65 };
     const pain = Math.max(0, ...this.read().map((r) => r.pain));
     const drain = Math.min(1, 0.6 * v.fatigue + 0.25 * Math.max(0, v.hunger - 0.6) + 0.5 * pain);
+    const e = this.get('endocrine')?.read();
+    const motivation = e?.motivation ?? 1;
+    const base = 300 + 700 * (1 - drain);
     return {
-      maxTokens: Math.round(300 + 700 * (1 - drain)),   // 累/饿/疼 → 话变短
-      willingness: Math.max(0, 1 - drain),               // 愿不愿意接活
+      maxTokens: Math.round(base * motivation),          // 累/饿/疼 → 话变短；提不起劲 → 再短
+      willingness: Math.max(0, (1 - drain) * Math.min(1, motivation)),  // 愿不愿意接活
       precision: Math.max(0.2, 1 - 0.5 * drain),         // 还细不细
       drain,
+      motivation,
     };
   }
 

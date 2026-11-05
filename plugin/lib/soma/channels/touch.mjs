@@ -255,15 +255,19 @@ export class Touch extends Channel {
   }
 
   // 压强 → 归一化换能。饱和曲线，不是线性的。
-  transduce(p) {
-    return p / (p + P50);
+  transduce(p, p50 = P50) {
+    return p / (p + p50);
   }
 
   contactTemp(objT, eObj) {
     return (1 * 33 + eObj * objT) / (1 + eObj);
   }
 
-  step(h) {
+  step(h, ctx) {
+    // 激素在这一层只做一件事：改常数。皮质醇高 → 同样的痛更痛（痛觉敏化）
+    const hor = ctx?.endocrine;
+    const painGain = hor?.painGain ?? 1;
+    const comfortGain = hor?.comfortGain ?? 1;
     for (const r of this.regions) {
       const S = this.transduce(r.P + r.pWeight);
       r.barF += (S - r.barF) * (h / r.tauF);
@@ -281,11 +285,11 @@ export class Touch extends Channel {
       // 痛：阈值是硬的门，越过才开；跨过多少线性映射到 0–1
       const hot = Math.max(0, (r.T - HOT_PAIN) / 15);     // 45→60°C 映射到 0→1
       const cold = Math.max(0, (COLD_PAIN - r.T) / COLD_PAIN);
-      r.painNow = Math.min(1, Math.max(hot, cold));
+      r.painNow = Math.min(1, Math.max(hot, cold) * painGain);
       r.painLoad += (r.painNow - r.painLoad) * Math.min(1, h / 60);
 
       // 抚摸：调谐曲线给目标值，然后像所有感觉一样适应
-      const ctTarget = r.stroking ? ctTuning(r.stroking.speed) : 0;
+      const ctTarget = r.stroking ? Math.min(1, ctTuning(r.stroking.speed) * comfortGain) : 0;
       r.ct += (ctTarget - r.ct) * Math.min(1, h / 1.2);
       r.slip += ((r.slipTarget ?? 0) - r.slip) * Math.min(1, h / 0.4);
 
