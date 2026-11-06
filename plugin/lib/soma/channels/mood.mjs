@@ -64,7 +64,9 @@ export class Mood extends Channel {
     target -= 0.55 * clamp(((v.hunger ?? 0) - 0.55) / 0.45, 0, 1);
     target -= 0.45 * (br.fear ?? 0);
     // 夜里本来就低。昼夜对心情有独立的那一路，跟累不累无关 [S]
-    target -= 0.30 * (1 - (ctx?.rhythm?.alert ?? 1));
+    target -= 0.15 * (1 - (ctx?.rhythm?.alert ?? 1));
+    // 生病那天的低落是一整套行为反应，不是「心情不好」
+    target -= 0.80 * (ctx?.immune?.sickness ?? 0);
     this.valence += (clamp(target, -1, 1) - this.valence) * Math.min(1, h / TAU_VALENCE);
 
     // 唤醒轴：绷不绷。肾上腺素和警觉拉高，疲劳和困把下限按住

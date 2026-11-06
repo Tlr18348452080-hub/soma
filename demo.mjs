@@ -328,6 +328,36 @@ export function demo({ every = 1.0 } = {}) {
   }
   line('');
 
+  line('\n═══ 实验十四：站起来那一下 ═══');
+  {
+    const s = new Soma({ clockHours: 10 });
+    s.setPose('lying_supine'); s.step(120);
+    line(`  躺着：血压 ${s.get('circulation').read().sbp.toFixed(0)}/${s.get('circulation').read().dbp.toFixed(0)}`);
+    s.setPose('standing'); s.step(2);
+    const c1 = s.get('circulation').read();
+    line(`  刚站起来：${c1.sbp.toFixed(0)}/${c1.dbp.toFixed(0)}，脑灌注 ${c1.map.toFixed(0)} mmHg，头晕 ${c1.dizzy.toFixed(2)}`);
+    s.step(30);
+    const c2 = s.get('circulation').read();
+    line(`  半分钟后：${c2.sbp.toFixed(0)}/${c2.dbp.toFixed(0)}，头晕 ${c2.dizzy.toFixed(2)}`);
+    line('  → 没有人「觉得晕」。是血沉下去了，脑灌注不够，那个数才升起来。');
+  }
+  line('');
+
+  line('\n═══ 实验十五：病一场 ═══');
+  {
+    const s = new Soma({ clockHours: 9 });
+    s.step(300);
+    line(`  好好的：${s.fmtWords()}`);
+    s.sick(0.6);
+    for (const h of [6, 24, 48]) {
+      s.step(h * 3600 - s.t);
+      const i = s.get('immune').read();
+      line(`  第 ${String(h).padStart(2)} 小时：炎症 ${i.inflam.toFixed(2)}，核心 ${s.get('homeo').read().coreT.toFixed(1)}°C，${s.fmtWords()}`);
+    }
+    line('  → 没吃东西、没被碰、也没人说话。它自己就沉下去了，过两天自己又上来。');
+  }
+  line('');
+
   line('\n═══ 完 ═══');
   line('所有数字都是这几条方程自己算出来的：');
   line('  dS̄/dt = (S − S̄)/τ      R = k(S − S̄)      T_c = (e皮T皮 + e料T料)/(e皮 + e料)      dT/dt = (T_c − T)·e/R_th\n');

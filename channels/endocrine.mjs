@@ -106,6 +106,8 @@ export class Endocrine extends Channel {
     // 皮质醇的基线不是常数——它跟着昼夜节律走，醒后半小时有个晨峰
     this.baseCortisol = BASE.cortisol * (ctx?.rhythm?.cortisolMod ?? 1);
     this._debt = ctx?.rhythm?.debt ?? 0;
+    this._sick = ctx?.immune?.sickness ?? 0;
+    this._immuneGain = ctx?.immune?.painGain ?? 1;
     // 昼夜对激素的驱动：褪黑素跟着「天黑了没有」走，血清素跟着「天亮着」走
     const night = clamp(ctx?.rhythm?.melatonin ?? 0, 0, 1);
     this.nightShift = night;
@@ -147,12 +149,13 @@ export class Endocrine extends Channel {
   }
 
   read() {
+    const sick = this._sick ?? 0;
     // 增益按「基线 = 1.0」归一化，这样没激素的时候身体还是原来的身体
     // 痛觉敏化跟「累积应激」走，不跟瞬时皮质醇走。
     // 这样晨峰不会把人变敏感——正常起床不是创伤。
     // 睡不够会痛觉过敏 [S]（睡眠剥夺降低痛阈，PMID 17535559）
     const debt = this._debt ?? 0;
-    const painGain = clamp((1 + 1.2 * this.stressLoad) * (1 + 0.35 * Math.min(1, debt)), 0.8, 2.6);
+    const painGain = clamp((1 + 1.2 * this.stressLoad) * (1 + 0.35 * Math.min(1, debt)) * (this._immuneGain ?? 1), 0.8, 3.2);
     const comfortGain = clamp(0.40 + 1.33 * this.dopamine, 0.40, 1.60);
     // 基线 = 1.0：多巴胺掉一截就提不起劲，皮质醇升一截就做什么都费劲
     const motivation = clamp(1 + 1.0 * (this.dopamine - BASE.dopamine) - 0.9 * (this.cortisol - BASE.cortisol), 0.15, 1.15);

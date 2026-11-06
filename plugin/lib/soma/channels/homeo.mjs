@@ -49,7 +49,8 @@ export class Homeo extends Channel {
     const strain = v?.strain ?? 0;
 
     // 基础核心温度来自昼夜节律，运动产热叠上去
-    const base = (r?.coreT ?? 36.5) + (ctx?.cycle?.bbt ?? 0);
+    // 发烧不是体温自己升，是设定点被炎症顶上去，身体再去追它
+    const base = (r?.coreT ?? 36.5) + (ctx?.cycle?.bbt ?? 0) + (ctx?.immune?.fever ?? 0);
     const heat = 2.0 * strain;
     const target = base + heat;
     // 产热快、散热慢，所以运动完还要热一阵

@@ -16,6 +16,8 @@ import { Endocrine } from './channels/endocrine.mjs';
 import { Rhythm } from './channels/rhythm.mjs';
 import { Homeo } from './channels/homeo.mjs';
 import { Brain } from './channels/brain.mjs';
+import { Circulation } from './channels/circulation.mjs';
+import { Immune } from './channels/immune.mjs';
 import { Cycle } from './channels/cycle.mjs';
 import { Mood } from './channels/mood.mjs';
 
@@ -34,6 +36,8 @@ export class Soma extends Body {
     this.use(new Rhythm(opts));  // 昼夜节律与睡眠压力
     this.use(new Homeo());       // 水、热、呼吸
     this.use(new Brain());       // 注意、恐惧、下行抑制
+    this.use(new Circulation()); // 血压、血流、脸红
+    this.use(new Immune());      // 炎症、发烧、病态行为
     this.use(new Mood());        // 心情：别的层的和，不是新信息
     if (opts.cycle !== false) this.use(new Cycle(opts));  // 月度慢波
     if (opts.ear) this.use(new Ear(opts));   // 耳蜗：滤波器组，输出的是谱
@@ -51,6 +55,17 @@ export class Soma extends Body {
   /** 喝点水。amount 是占体重的比例，一杯约 0.005。 */
   drink(amount = 0.005) { return this.emit({ type: 'drink', amount }); }
   /** 把注意力放到某个部位。几分钟就散。 */
+  /** 病一场。level 0.5 像一次普通感冒 */
+  sick(level = 0.5) {
+    this.emit({ type: 'infect', level });
+    return this;
+  }
+
+  heal() {
+    this.emit({ type: 'heal' });
+    return this;
+  }
+
   focus(region, strength = 0.6) {
     this.emit({ type: 'focus', region, strength });
     this.emit({ type: 'attend', part: region, gain: 1 + strength });
@@ -86,6 +101,9 @@ export class Soma extends Body {
 
   /** 停止抚摸 */
   stop(part) { this.get('touch').stop(part); }
+
+  /** 换个姿势。站起来那一下，血是往下走的。 */
+  setPose(name) { this.get('touch').setPose(name); return this; }
 
   /** 开始用力。level 0–1：坐着 0、走路 0.2、跑步 0.7、拼了 1.0 */
   exert(level = 0.5) { this.emit({ type: 'exert', level }); }
