@@ -743,7 +743,8 @@ export function apply(root, config = {}) {
       description: '看一眼现在身体到底什么状态（含没被触发的那部分）。也可以用来查合法部位 id。',
       parameters: schema({}, []),
       output: outSchema,
-      execute: async () => ({ ...reply('这是当前的全身状态表。'), table: soma.table() }),
+      // 表直接塞进 note：多一个字段就要多一次 schema 同步，运行中的旧进程会直接拒收
+      execute: async () => reply('这是当前的全身状态表。\n\n' + soma.table()),
     })
   })
 }
