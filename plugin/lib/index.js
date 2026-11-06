@@ -564,15 +564,15 @@ export function apply(root, config = {}) {
 
     ctx.tools.register({
       name: 'soma_look',
-      description: '用这只眼睛看一张图：中央那一小块是清楚的，往外按偏心度逐圈降采样，生成"它看到的这一版"。返回的路径你可以直接打开看。',
-      parameters: schema({ path: { type: 'string', description: '图片路径。' } }, ['path']),
+      description: '用这只眼睛看一张图。默认是扫视：眼睛跳几个点，每次只有中间清楚，拼起来才是整张。传 mode="fixate" 就只给一眼——那一眼是糊的，因为中央凹只占百分之几。',
+      parameters: schema({ path: { type: 'string', description: '图片路径。' }, mode: { type: 'string', description: 'scan（默认，扫视拼起来）或 fixate（只给一眼）' } }, ['path']),
       output: outSchema,
       execute: async (a) => {
         const eye = soma.get('eye')
         if (!eye) return reply('眼睛没开。')
         let r
         try {
-          r = soma.see(String(a.path), { out: '/tmp/soma-seen.png' })
+          r = soma.see(String(a.path), { out: '/tmp/soma-seen.png', mode: a?.mode === 'fixate' ? 'fixate' : 'scan' })
         } catch (e) {
           return reply('没看成：' + (e?.message || e))
         }
