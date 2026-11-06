@@ -133,6 +133,44 @@ export const REGIONS = [
 ];
 
 // mu = 摩擦系数 [A] 铝 0.6 / 橡胶 0.9 有实测（PMID 19431002），其余按材质粗糙度估 [G]
+/**
+ * 穿在身上的东西。一件衣服 = 四个数：
+ *   spread  被布料摊开多少倍（面积变大，压强变小）
+ *   atten   传到皮肤的还剩多少（纤维缓冲）
+ *   insul   热阻加了多少（隔热，凉感变迟钝）
+ *   mu      外层布料的摩擦系数
+ * 分级：[G] 全是估的，只有方向能信，绝对值不能引。
+ */
+export const COVERS = {
+  bare:   { label: '没穿',   spread: 1,   atten: 1.00, insul: 0.0, mu: 0.70 },
+  tee:    { label: '单衣',   spread: 1.6, atten: 0.60, insul: 0.35, mu: 0.85 },
+  knit:   { label: '毛衣',   spread: 2.4, atten: 0.35, insul: 0.90, mu: 0.95 },
+  denim:  { label: '牛仔',   spread: 2.0, atten: 0.30, insul: 0.70, mu: 0.90 },
+  coat:   { label: '外套',   spread: 3.0, atten: 0.20, insul: 1.40, mu: 0.80 },
+  sock:   { label: '袜子',   spread: 1.5, atten: 0.55, insul: 0.50, mu: 0.90 },
+};
+
+/** 默认穿什么：头手露着，身上单衣，腿是牛仔，脚穿袜子。 */
+export const DRESS = {
+  casual: { head: 'bare', hand: 'bare', torso: 'tee', arm: 'tee', leg: 'denim', foot: 'sock', default: 'tee' },
+  heavy:  { head: 'bare', hand: 'bare', torso: 'coat', arm: 'coat', leg: 'denim', foot: 'sock', default: 'coat' },
+  pajama: { head: 'bare', hand: 'bare', torso: 'tee', arm: 'tee', leg: 'tee', foot: 'sock', default: 'tee' },
+  bare:   { head: 'bare', hand: 'bare', torso: 'bare', arm: 'bare', leg: 'bare', foot: 'bare', default: 'bare' },
+};
+
+
+/** 这个区归哪一组（决定默认穿什么）。 */
+export function groupOf(id) {
+  if (/(_tip|_mid)$/.test(id) && !/^tail_/.test(id)) return 'hand';
+  if (['palm', 'palm_edge', 'dorsum'].includes(id)) return 'hand';
+  if (['forearm', 'upper_arm', 'elbow', 'armpit'].includes(id)) return 'arm';
+  if (['thigh', 'knee', 'calf', 'ankle'].includes(id)) return 'leg';
+  if (['foot_dorsum', 'sole', 'toes'].includes(id)) return 'foot';
+  if (['scalp', 'forehead', 'cheek', 'lips', 'tongue_tip', 'ear_lobe',
+       'neck_front', 'neck_side', 'ear_l', 'ear_r'].includes(id)) return 'head';
+  return 'torso';
+}
+
 export const MATERIALS = {
   metal:   { e: 14.0, mu: 0.60, label: '金属' },
   alu:     { e: 23.7, mu: 0.60, label: '铝' },
@@ -176,6 +214,7 @@ export class Touch extends Channel {
       .filter((r) => this.intimate || !r.intimate)
       .filter((r) => !r.appendage || (r.appendage === 'catEar' ? this.extras.catEars : this.extras[r.appendage]));
     this.regions = base.map((r) => keep.get(r.id) ?? this._mkRegion(r));
+    this.applyDress(this.dressName);
     this.setPose(this.pose);
   }
 
@@ -194,6 +233,7 @@ export class Touch extends Channel {
     this.weight = opts.weight ?? 50;   // kg
     this.pose = opts.pose ?? 'standing';
     this.extras = { tail: opts.tail === true, catEars: opts.catEars === true };
+    this.dressName = opts.dress ?? 'casual';
     this.regions = [...REGIONS, ...EXTRA_REGIONS]
       .filter((r) => this.intimate || !r.intimate)
       .filter((r) => !r.appendage || (r.appendage === 'catEar' ? this.extras.catEars : this.extras[r.appendage]))
@@ -210,6 +250,7 @@ export class Touch extends Channel {
       since: null,
       gain: 1,
       pWeight: 0,   // 重力带来的持续压强 N/cm²
+      cover: 'bare',
       ct: 0,        // C-tactile 活动 0–1：慢速轻抚走的那条通路，管"舒服"
       slip: 0,      // 切向摩擦 0–1：滑动时的阻力，独立于压力
       painNow: 0,   // 瞬时痛强度 0–1（温度越过阈值就开始）
@@ -218,6 +259,27 @@ export class Touch extends Channel {
       sMax: r.thick ? 2.5 : (r.area < 10 ? 6.4 : r.area < 60 ? 8 : 15),
     }));
     this.byId = new Map(this.regions.map((r) => [r.id, r]));
+    this.applyDress(this.dressName);
+  }
+
+  /**
+   * 换一身。一件衣服 = 每个区挂一个 COVERS 里的名字。
+   * 穿上之后：面积被摊开、压强被削弱、热阻变大、表层摩擦换成布料的。
+   */
+  applyDress(name = 'casual') {
+    const dress = DRESS[name] ?? DRESS.casual;
+    this.dressName = DRESS[name] ? name : 'casual';
+    for (const r of this.regions) {
+      const g = groupOf(r.id);
+      r.cover = dress[g] ?? dress.default ?? 'bare';
+    }
+    return this;
+  }
+
+  /** 这一区现在穿的是什么（给面板和 read 用）。 */
+  coverOf(id) {
+    const c = COVERS[this.region(id).cover] ?? COVERS.bare;
+    return c.label;
   }
 
   /** 存档：只存会变的东西，分区按 id 对齐（以后加区也不会错位）。 */
@@ -261,6 +323,9 @@ export class Touch extends Channel {
         r.depth = this.saturateDepth(indentationDepth('tip', F), r);
         r.contact = 'tip';
       }
+      // 隔着衣服：力被摊开、被纤维吃掉一截，只剩一部分落到皮肤上
+      const cov = COVERS[r.cover] ?? COVERS.bare;
+      p = (F / Math.max(A * cov.spread, 0.5)) * cov.atten;
       r.P = Math.max(r.P, p);
       if (ev.temp != null) {
         r.objT = ev.temp;
@@ -318,7 +383,8 @@ export class Touch extends Channel {
 
       if (r.objT != null) {
         const Tc = this.contactTemp(r.objT, r.eObj ?? 1);
-        const rate = (0.35 * (r.eObj ?? 1)) / r.rth;
+        const insul = 1 + ((COVERS[r.cover] ?? COVERS.bare).insul);
+        const rate = (0.35 * (r.eObj ?? 1)) / (r.rth * insul);
         r.T += (Tc - r.T) * Math.min(1, rate * h);
       } else {
         r.T += (r.baseT - r.T) * Math.min(1, 0.05 * h);

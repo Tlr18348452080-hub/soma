@@ -55,6 +55,9 @@ export class Soma extends Body {
   /** 喝点水。amount 是占体重的比例，一杯约 0.005。 */
   drink(amount = 0.005) { return this.emit({ type: 'drink', amount }); }
   /** 把注意力放到某个部位。几分钟就散。 */
+  /** 换一身衣服。脱光了力就直打在皮肤上。 */
+  dress(name = 'casual') { const t = this.get('touch'); if (t) t.applyDress(name); return this; }
+
   /** 说了一堆话。脑子是要吃饭的。 */
   burn(tokens) { return this.emit({ type: 'burn', tokens }); }
 
