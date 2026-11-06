@@ -21,6 +21,10 @@ export class Brain extends Channel {
     this.fear = 0.05;       // 恐惧/警觉 0–1（慢通路，经皮层，认得准）
     this.fearFast = 0.05;   // 快速通路：丘脑直连杏仁核，二十来毫秒就到了，但粗
     this.habituate = 0;     // 海马：同一个情境反复来，反应往下走
+    this.thalamicGate = 0.8; // 丘脑：上行信息能过多少
+    this.intero = 0.3;       // 岛叶：内脏信号有多清楚
+    this.inhibit = 0.7;      // 前额叶：压得住多少次级冲动
+    this.conflict = 0;       // 前扣带：两股相反的劲儿同时大
     this.valence = 0;       // 效价 −1…+1
     this.endorphin = 0;     // 内源性镇痛 0–1
     this.cpm = 0;           // 下行抑制（条件性疼痛调制）0–1
@@ -77,6 +81,30 @@ export class Brain extends Channel {
     const target = clamp(pain * 0.6, 0, 0.6);
     this.endorphin += (target - this.endorphin) * Math.min(1, h / 120);
     this.cpm += (0 - this.cpm) * Math.min(1, h / 1200);
+
+    // ── 丘脑门控：注意力开着就放得多，累了就漏 ──
+    // 丘脑不是简单的中转，它按觉醒和注意决定多少信息能上行 [S] 方向 / [A] 系数
+    const vt = ctx?.vitals ?? null;
+    const fat = vt?.fatigue ?? 0;
+    const gateWant = clamp(0.55 + 0.55 * this.focusGain - 0.35 * fat, 0.15, 1);
+    this.thalamicGate += (gateWant - this.thalamicGate) * Math.min(1, h / 8);
+
+    // ── 岛叶：内感受的清晰度。焦虑会把它调高（心跳变得很响） ──
+    const hr = vt?.hr ?? 70;
+    const drive = clamp((hr - 70) / 60, 0, 1) * 0.6 + (vt?.hunger ?? 0) * 0.4;
+    const interoWant = clamp(0.25 + drive * 0.6 + this.fear * 0.35, 0, 1);
+    this.intero += (interoWant - this.intero) * Math.min(1, h / 30);
+
+    // ── 前额叶：疲劳和恐惧都会削弱抑制 ──
+    const inhibitWant = clamp(0.85 - 0.55 * fat - 0.25 * this.fear, 0.1, 1);
+    this.inhibit += (inhibitWant - this.inhibit) * Math.min(1, h / 180);
+
+    // ── 前扣带：做与不做两股劲儿同时大，就卡住 ──
+    // 冲突 = 2·min(a,b)/(a+b)，两股越接近越大 [A]
+    const a = clamp(fat * 0.7 + 0.2, 0, 1);          // 想停
+    const b = clamp(1 - fat + this.fear * 0.3, 0, 1); // 想继续
+    const conflictWant = (2 * Math.min(a, b)) / Math.max(1e-6, a + b);
+    this.conflict += (conflictWant - this.conflict) * Math.min(1, h / 60);
   }
 
   read() {
@@ -95,6 +123,10 @@ export class Brain extends Channel {
       cpm: this.cpm,
       painMod: (1 + 0.8 * this.fear) * (1 - 0.5 * this.endorphin) * (1 - 0.4 * this.cpm),
       alertBoost: 0.3 * Math.max(this.fear, this.fearFast * 0.8),
+      thalamicGate: this.thalamicGate,
+      interoception: this.intero,
+      inhibition: this.inhibit,
+      conflict: this.conflict,
       focusBoost,
       otherCut,
     };

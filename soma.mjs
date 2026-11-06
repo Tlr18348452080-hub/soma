@@ -19,6 +19,7 @@ import { Brain } from './channels/brain.mjs';
 import { Circulation } from './channels/circulation.mjs';
 import { Immune } from './channels/immune.mjs';
 import { analyze as analyzeAudio } from './channels/audio.mjs';
+import { look as lookAt } from './channels/vision.mjs';
 import { Cycle } from './channels/cycle.mjs';
 import { Muscle } from './channels/muscle.mjs';
 import { Vestib } from './channels/vestib.mjs';
@@ -93,6 +94,18 @@ export class Soma extends Body {
   listen(file, opts = {}) {
     const r = analyzeAudio(file, opts);
     this.emit({ type: 'hear', spectrum: r.spectrum, loudness: r.loud });
+    return r;
+  }
+
+  /**
+   * 真的用眼睛看一张图：中央凹清楚、周边按偏心度降采样，
+   * 拼成它这一版。看清楚的那部分只占很小一块，这是视网膜的省法。
+   */
+  see(file, opts = {}) {
+    const r = lookAt(file, opts);
+    // 平均亮度换算成照度，喂回眼通道的状态里
+    const lux = Math.pow(10, 1.2 + r.meanLum * 3.3);   // 16 lux … 3.2e4 lux [A]
+    this.emit({ type: 'see', lux });
     return r;
   }
 

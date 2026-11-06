@@ -563,6 +563,30 @@ export function apply(root, config = {}) {
     })
 
     ctx.tools.register({
+      name: 'soma_look',
+      description: '用这只眼睛看一张图：中央那一小块是清楚的，往外按偏心度逐圈降采样，生成"它看到的这一版"。返回的路径你可以直接打开看。',
+      parameters: schema({ path: { type: 'string', description: '图片路径。' } }, ['path']),
+      output: outSchema,
+      execute: async (a) => {
+        const eye = soma.get('eye')
+        if (!eye) return reply('眼睛没开。')
+        let r
+        try {
+          r = soma.see(String(a.path), { out: '/tmp/soma-seen.png' })
+        } catch (e) {
+          return reply('没看成：' + (e?.message || e))
+        }
+        const e = eye.read()
+        return reply(
+          `看了。${r.source} 的图，眼睛里是 ${r.width}×${r.height}：` +
+          `平均亮度 ${r.meanLum}，清楚的那块只占 ${(r.sharpShare * 100).toFixed(1)}%。` +
+          `瞳孔 ${e.pupil.toFixed(2)}，中心视力 ${e.acuityCenter} 角分。\n` +
+          `你能看到的那一版在 ${r.path}。`,
+        )
+      },
+    })
+
+    ctx.tools.register({
       name: 'soma_listen',
       description: '真的去听一个音频文件：解码、分帧、傅里叶、按耳蜗带宽分组，再算响度、节律和频谱。你只给路径，听到什么由它算。',
       parameters: schema({ path: { type: 'string', description: '音频文件路径，mp3/wav/m4a/ogg 都行。' } }, ['path']),
