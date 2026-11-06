@@ -97,6 +97,23 @@ export class Ear extends Channel {
     this.fatigue = clamp(this.fatigue + Math.max(0, Number(tone.db ?? 60) - 75) * 0.002 * dur, 0, 1);
   }
 
+  /**
+   * 听完一个真实文件之后，把平均谱灌进来。
+   * 之后它就像刚才真的被这一段声音照过一遍。
+   */
+  apply(ev) {
+    if (ev?.type !== 'hear') return false;
+    if (Array.isArray(ev.spectrum)) {
+      for (let i = 0; i < this.bands.length && i < ev.spectrum.length; i++) {
+        const v = Array.isArray(ev.spectrum[i]) ? ev.spectrum[i][1] : ev.spectrum[i];
+        this.bands[i] = Number(v) || 0;
+        this.peak[i] = Math.max(this.peak[i], this.bands[i]);
+      }
+    }
+    if (typeof ev.loudness === 'number') this.loudness = clamp(ev.loudness, 0, 1);
+    return true;
+  }
+
   step(h) {
     // 每个滤波器的泄漏：声音停了，余响按各自带宽衰减，宽的掉得快 [S] 方向 / [A] 常数
     for (let i = 0; i < this.bands.length; i++) {

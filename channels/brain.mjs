@@ -18,7 +18,9 @@ export class Brain extends Channel {
     super('brain');
     this.focus = null;      // 注意落在哪个部位
     this.focusGain = 0;     // 0–1
-    this.fear = 0.05;       // 恐惧/警觉 0–1
+    this.fear = 0.05;       // 恐惧/警觉 0–1（慢通路，经皮层，认得准）
+    this.fearFast = 0.05;   // 快速通路：丘脑直连杏仁核，二十来毫秒就到了，但粗
+    this.habituate = 0;     // 海马：同一个情境反复来，反应往下走
     this.valence = 0;       // 效价 −1…+1
     this.endorphin = 0;     // 内源性镇痛 0–1
     this.cpm = 0;           // 下行抑制（条件性疼痛调制）0–1
@@ -33,6 +35,8 @@ export class Brain extends Channel {
       case 'threat': {
         const l = clamp(Number(ev.level ?? 0.5), 0, 1);
         this.fear = clamp(this.fear + l * 0.5, 0, 1);
+        // 快通路先到：幅度打折（分不清是不是真威胁），但不看情面 [S] 方向 / [A] 系数
+        this.fearFast = clamp(this.fearFast + l * 0.8, 0, 1);
         this.valence = clamp(this.valence - l * 0.3, -1, 1);
         return true;
       }
@@ -59,6 +63,11 @@ export class Brain extends Channel {
     }
     // 恐惧消退得慢
     this.fear += (0.05 - this.fear) * Math.min(1, h / 600);
+    // 快通路没有皮层帮忙确认，几十秒就散了 [A]
+    this.fearFast += (this.fear - this.fearFast) * Math.min(1, h / 25);
+    // 海马的习惯化：反复的、无后果的威胁慢慢不再引起反应
+    this.habituate += (this.fear - this.habituate) * Math.min(1, h / 900);
+    this.fearFast = clamp(this.fearFast - this.habituate * 0.15, 0, 1);
     this.valence += (0 - this.valence) * Math.min(1, h / 900);
 
     // 下行抑制：持续的痛会把自己的门关小一点，也关别的门 [A]
@@ -78,12 +87,14 @@ export class Brain extends Channel {
       focus: this.focus,
       focusGain: this.focusGain,
       fear: this.fear,
+      fearFast: this.fearFast,
+      habituate: this.habituate,
       valence: this.valence,
       endorphin: this.endorphin,
       // 乘在别的通道上
       cpm: this.cpm,
       painMod: (1 + 0.8 * this.fear) * (1 - 0.5 * this.endorphin) * (1 - 0.4 * this.cpm),
-      alertBoost: 0.3 * this.fear,
+      alertBoost: 0.3 * Math.max(this.fear, this.fearFast * 0.8),
       focusBoost,
       otherCut,
     };

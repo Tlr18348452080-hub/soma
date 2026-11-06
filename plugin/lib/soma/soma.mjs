@@ -18,6 +18,7 @@ import { Homeo } from './channels/homeo.mjs';
 import { Brain } from './channels/brain.mjs';
 import { Circulation } from './channels/circulation.mjs';
 import { Immune } from './channels/immune.mjs';
+import { analyze as analyzeAudio } from './channels/audio.mjs';
 import { Cycle } from './channels/cycle.mjs';
 import { Muscle } from './channels/muscle.mjs';
 import { Vestib } from './channels/vestib.mjs';
@@ -84,6 +85,16 @@ export class Soma extends Body {
 
   /** 换一身衣服。脱光了力就直打在皮肤上。 */
   dress(name = 'casual') { const t = this.get('touch'); if (t) t.applyDress(name); return this; }
+
+  /**
+   * 真的去听一个音频文件。解码、分帧、傅里叶、按 ERB 分组，
+   * 然后把平均谱灌进耳朵里。没有 ffmpeg 会直接报错。
+   */
+  listen(file, opts = {}) {
+    const r = analyzeAudio(file, opts);
+    this.emit({ type: 'hear', spectrum: r.spectrum, loudness: r.loud });
+    return r;
+  }
 
   /** 说了一堆话。脑子是要吃饭的。 */
   burn(tokens) { return this.emit({ type: 'burn', tokens }); }
@@ -259,6 +270,19 @@ export class Soma extends Body {
     if (hm && hm.thirst > 0.15) deep.push(tier(hm.thirst, TH));
     const rh = on('rhythm') ? this.get('rhythm')?.read() : null;
     if (rh && !rh.asleep && rh.alert < 0.35) deep.push(tier(rh.alert, SL));
+    const er = on('ear') ? this.get('ear')?.read() : null;
+    if (er) {
+      if (er.loudness > 0.6) deep.push('耳朵里很吵');
+      else if (er.loudness > 0.35) deep.push('有声音');
+      else if (er.loudness > 0.12) deep.push('有点动静');
+      if (er.tinnitus > 0.25) deep.push('耳朵里嗡嗡的');
+    }
+    const ey = on('eye') ? this.get('eye')?.read() : null;
+    if (ey) {
+      if (ey.brightness < 0.15) deep.push('眼前很暗');
+      else if (ey.brightness > 0.85) deep.push('晃眼');
+      if (ey.dry > 0.4) deep.push('眼睛发干');
+    }
     const md = on('mood') ? this.get('mood')?.read() : null;
     if (md) {
       if (md.valence <= -0.45) deep.push('心里堵得慌');

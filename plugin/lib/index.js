@@ -563,6 +563,28 @@ export function apply(root, config = {}) {
     })
 
     ctx.tools.register({
+      name: 'soma_listen',
+      description: '真的去听一个音频文件：解码、分帧、傅里叶、按耳蜗带宽分组，再算响度、节律和频谱。你只给路径，听到什么由它算。',
+      parameters: schema({ path: { type: 'string', description: '音频文件路径，mp3/wav/m4a/ogg 都行。' } }, ['path']),
+      output: outSchema,
+      execute: async (a) => {
+        const ear = soma.get('ear')
+        if (!ear) return reply('耳朵没开。')
+        let r
+        try {
+          r = soma.listen(String(a.path), { maxSeconds: 20 })
+        } catch (e) {
+          return reply('没听成：' + (e?.message || e))
+        }
+        return reply(
+          `听了 ${r.seconds} 秒。最响 ${r.peakDb} dB，平均响度 ${r.loud}，` +
+          `每秒约 ${r.onsetsPerSec} 个声音起点，间隔规律性 ${r.regularity}，高频占比 ${r.hiBand}。` +
+          `\n${soma.fmtWords()}`,
+        )
+      },
+    })
+
+    ctx.tools.register({
       name: 'soma_hear',
       description: '耳朵接收一段声音。只能给物理量：频率、声压、时长。响不响、吵不吵是方程算的。',
       parameters: schema(
