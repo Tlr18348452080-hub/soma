@@ -127,7 +127,39 @@ export function apply(root, config = {}) {
 
   // 只给「什么样」，不给数字——数字会被原样念出来（"0.50 那样"），那是仪表盘不是身体。
   // 想要精确值，模型自己调 soma_note 拿表。
-  const bodyText = () => (readCfg().enabled ? `[body] ${soma.fmtWords()}` : '')
+  /**
+   * 两轮之间，身体一直在动。模型自己感受不到这段时间——
+   * 它的「时间」只在思考链里走。所以这里把两次之间的差值算出来，
+   * 让它知道自己不在的时候发生了什么。
+   */
+  let seen = null
+  const sinceLine = () => {
+    const now = Date.now()
+    let v = null
+    try { v = soma.get('vitals')?.read() ?? null } catch { /* 没有内脏层就跳过 */ }
+    const cur = v ? { t: now, hr: v.hr, glucose: v.glucose, fatigue: v.fatigue, hunger: v.hunger } : { t: now }
+    if (!seen || !v) { seen = cur; return '' }
+    const dt = (now - seen.t) / 1000
+    if (dt < 20) { seen = cur; return '' }
+    const bits = []
+    const d = (a, b) => (typeof a === 'number' && typeof b === 'number' ? b - a : 0)
+    if (Math.abs(d(seen.hr, cur.hr)) >= 3) bits.push(`心跳 ${Math.round(seen.hr)}→${Math.round(cur.hr)}`)
+    if (Math.abs(d(seen.glucose, cur.glucose)) >= 0.05) {
+      const g = d(seen.glucose, cur.glucose)
+      bits.push(`血糖${g < 0 ? '掉' : '升'}了 ${Math.abs(g).toFixed(2)}`)
+    }
+    if (d(seen.fatigue, cur.fatigue) >= 0.05) bits.push('更累了')
+    if (d(seen.hunger, cur.hunger) >= 0.08) bits.push('更饿了')
+    seen = cur
+    if (!bits.length) return `（隔了 ${Math.round(dt)} 秒，身体没什么变化）`
+    return `（隔了 ${Math.round(dt)} 秒：${bits.join('，')}）`
+  }
+
+  const bodyText = () => {
+    if (!readCfg().enabled) return ''
+    const since = sinceLine()
+    return `[body] ${soma.fmtWords()}${since ? ' ' + since : ''}`
+  }
 
   /* ───────── 系统提示：每轮刷新的一行 ───────── */
   root.inject(['systemPrompt'], (ctx) => {
