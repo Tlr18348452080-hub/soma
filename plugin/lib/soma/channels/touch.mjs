@@ -468,6 +468,7 @@ export class Touch extends Channel {
         label: r.label,
         kind: r.kind,
         pressure: SA,
+        raw: r.P + r.pWeight,
         sharp: Math.abs(RA) / (Math.abs(RA) + Math.abs(SA) + 1e-6),
         thermal,
         temp: r.T,

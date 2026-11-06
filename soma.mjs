@@ -149,6 +149,7 @@ export class Soma extends Body {
       part,
       force: forceN,
       area: opts.area,
+      contact: opts.contact,
       temp: opts.temp,
       material: opts.material,
     });
@@ -238,6 +239,37 @@ export class Soma extends Body {
   setGain(g) {
     const t = this.get('touch');
     if (t) t.gain = Math.max(0, Number(g) || 0);
+  }
+
+  /**
+   * 只挑「已经越线、值得打断一下」的那一条。没有就返回 null。
+   * 用于在轮次中途插一句话——人手上有事的时候，是被身体拽走的。
+   */
+  heaviest() {
+    let worst = null;
+    let worstScore = 0;
+    for (const r of this.read()) {
+      if (this.muted?.has('touch')) break;
+      const p = r.pain ?? 0;
+      if (p > 0.45 && p > worstScore) { worstScore = p; worst = `${r.label}那边疼得厉害`; }
+      if ((r.raw ?? 0) > 15 && (r.raw ?? 0) / 30 > worstScore) { worstScore = (r.raw ?? 0) / 30; worst = `${r.label}被死命摁着，闷得发胀`; }
+      const t = Math.abs(r.thermal ?? 0);
+      if (t > 1.6 && t / 3 > worstScore) {
+        worstScore = t / 3;
+        worst = `${r.label}${(r.thermal ?? 0) > 0 ? '发烫' : '冰凉，凉得钻进去'}`;
+      }
+      if ((r.pressure ?? 0) > 3.5 && (r.pressure ?? 0) / 6 > worstScore) {
+        worstScore = (r.pressure ?? 0) / 6;
+        worst = `${r.label}被压得发沉，想换一下姿势`;
+      }
+    }
+    const v = this.get('vitals')?.read?.() ?? null;
+    if (v) {
+      if (typeof v.glucose === 'number' && v.glucose < 3.2 && 0.75 > worstScore) { worstScore = 0.75; worst = '血糖掉到很难专心了，手有点发空'; }
+      if (typeof v.fatigue === 'number' && v.fatigue > 0.88 && 0.8 > worstScore) { worstScore = 0.8; worst = '累到快撑不住了，看字要重复看两遍'; }
+      if (typeof v.hr === 'number' && v.hr > 130 && 0.6 > worstScore) { worstScore = 0.6; worst = `心跳 ${Math.round(v.hr)}，稳不下来`; }
+    }
+    return worst;
   }
 
   fmtWords(threshold = 0.05) {

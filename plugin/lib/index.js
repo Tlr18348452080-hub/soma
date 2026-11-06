@@ -74,6 +74,32 @@ export function apply(root, config = {}) {
     return false
   }
 
+  /**
+   * 半路插一句：人做事做到一半会被自己的身体打断——疼一下、腿麻了、血糖掉了。
+   * 这里只在真的越线时插，且有冷却，免得变成噪音。
+   */
+  let lastInterrupt = 0
+  const INTERRUPT_CD = 8 * 60 * 1000
+  const bodyInterrupt = () => {
+    const c = readCfg()
+    if (!c.enabled || c.interrupt === false) return false
+    if (Date.now() - lastInterrupt < INTERRUPT_CD) return false
+    let heavy = null
+    try { heavy = soma.heaviest() } catch { return false }
+    if (!heavy) return false
+    const target = liveAgents.find((a) => a?.status && a.status !== 'idle')
+    if (!target) return false
+    lastInterrupt = Date.now()
+    try {
+      target.followup({
+        id: `soma-bodynudge-${Date.now()}`,
+        role: 'user',
+        content: [{ type: 'text', text: `【身体】${heavy}。这不是新任务，是你自己身上的事——接着做手上的，顺带知道它在。` }],
+      })
+      return true
+    } catch { return false }
+  }
+
   let lastWakeDay = null
   const rhythmTick = () => {
     const c = readCfg()
@@ -113,6 +139,7 @@ export function apply(root, config = {}) {
     last = now
     if (dt > 0) soma.step(dt)
     try { tickCfg() } catch { /* 配置坏了不影响身体 */ }
+    try { bodyInterrupt() } catch { /* 插不进去就等下一轮 */ }
     try { rhythmTick() } catch { /* 作息坏了也不影响身体 */ }
     save()
   }

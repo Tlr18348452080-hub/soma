@@ -110,9 +110,13 @@ function sample(lvl, x, y, W, H) {
  * @param {object} opts { width=240, fovea=0.12, drop=0.55, out }
  */
 export function look(file, opts = {}) {
-  const W = opts.width ?? 240;
-  const fovea = opts.fovea ?? 0.12;     // 中央清晰区占半宽的比例，约双眼中心 2–5°
-  const drop = opts.drop ?? 0.55;       // 每圈最多降到几级
+  const W = opts.width ?? 360;
+  const mode = opts.mode ?? 'scan';     // fixate = 一眼（周边糊）；scan = 扫视拼起来
+  const fovea = opts.fovea ?? (mode === 'scan' ? 0.30 : 0.12);
+  const drop = opts.drop ?? (mode === 'scan' ? 0.32 : 0.55);
+  // 扫视的注视点：人看图时眼睛会跳来跳去，每次只有中间那块清楚，
+  // 大脑把好几次的清楚拼在一起，所以整张图看起来是清楚的。
+  const n = Math.max(1, opts.fixations ?? 3);
 
   let header;
   try {
@@ -129,13 +133,26 @@ export function look(file, opts = {}) {
   for (let i = 1; i <= 4; i++) levels.push(half(levels[i - 1].buf, levels[i - 1].w, levels[i - 1].h));
 
   const out = Buffer.alloc(W * H * 3);
-  const cx = W / 2, cy = H / 2;
-  const maxR = Math.hypot(cx, cy);
+  const fixes = [];
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      fixes.push({ x: ((i + 0.5) / n) * W, y: ((j + 0.5) / n) * H });
+    }
+  }
+  // 注视点的覆盖半径：让相邻两次注视的清楚区刚好接上
+  const cellW = W / n, cellH = H / n;
+  const cover = Math.hypot(cellW, cellH) / 2;
 
   let sharp = 0, lum = 0;
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      const r = Math.hypot(x - cx, y - cy) / maxR;          // 0 中心，1 边缘
+      // 到最近的那个注视点有多远
+      let d = Infinity;
+      for (const f of fixes) {
+        const dd = Math.hypot(x - f.x, y - f.y);
+        if (dd < d) d = dd;
+      }
+      const r = mode === 'fixate' ? Math.hypot(x - W / 2, y - H / 2) / Math.hypot(W / 2, H / 2) : d / cover;
       // 偏心度越大，并进来的感光细胞越多，采样级越粗 [S] 方向 / [A] 参数
       const ecc = Math.max(0, (r - fovea) / Math.max(1e-6, 1 - fovea));
       const lvl = clamp(Math.round(ecc * 4 * drop / 0.55), 0, 4);
