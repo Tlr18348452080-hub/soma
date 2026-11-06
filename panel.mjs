@@ -2,7 +2,7 @@
 // 身体状态面板。只读 /root/.dsh/soma-state.json —— 不推进、不写盘、不抢插件的活。
 //   node panel.mjs [--port 7788]
 import { createServer } from 'node:http';
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { Soma } from './soma.mjs';
 
 const statePath = process.env.SOMA_STATE || '/root/.dsh/soma-state.json';
@@ -94,15 +94,15 @@ thumb_tip:[26,259],index_mid:[34,263],index_tip:[32,273],pinky_tip:[42,266],ring
 thigh:[95,262],knee:[95,301],calf:[95,341],ankle:[95,383],foot_dorsum:[95,399],sole:[95,407],toes:[95,417]};
 const FIG='<g stroke="#2a3450" stroke-width="2" fill="#161d2e" stroke-linejoin="round">'
 +'<ellipse cx="110" cy="50" rx="27" ry="33"/>'
-+'<path d="M96 81 L96 96 Q110 103 124 96 L124 81 Z"/>'
-+'<path d="M69 106 Q110 96 151 106 L153 190 Q132 207 110 207 Q88 207 67 190 Z"/>'
-+'<path d="M67 190 Q110 214 153 190 L151 237 Q110 256 69 237 Z"/>'
-+'<path d="M61 111 Q46 120 44 160 L42 247 Q42 264 49 270 L57 265 Q54 250 58 247 L60 160 L66 119 Z"/>'
-+'<path d="M159 111 Q174 120 176 160 L178 247 Q178 264 171 270 L163 265 Q166 250 162 247 L160 160 L154 119 Z"/>'
-+'<path d="M73 241 Q69 300 75 373 L84 373 Q84 300 88 241 Z"/>'
-+'<path d="M147 241 Q151 300 145 373 L136 373 Q136 300 132 241 Z"/>'
-+'<path d="M75 373 L84 373 L86 402 L74 402 Z"/>'
-+'<path d="M145 373 L136 373 L134 402 L146 402 Z"/>'
++'<path class="silhouette" d="M96 81 L96 96 Q110 103 124 96 L124 81 Z"/>'
++'<path class="silhouette" d="M69 106 Q110 96 151 106 L153 190 Q132 207 110 207 Q88 207 67 190 Z"/>'
++'<path class="silhouette" d="M67 190 Q110 214 153 190 L151 237 Q110 256 69 237 Z"/>'
++'<path class="silhouette" d="M61 111 Q46 120 44 160 L42 247 Q42 264 49 270 L57 265 Q54 250 58 247 L60 160 L66 119 Z"/>'
++'<path class="silhouette" d="M159 111 Q174 120 176 160 L178 247 Q178 264 171 270 L163 265 Q166 250 162 247 L160 160 L154 119 Z"/>'
++'<path class="silhouette" d="M73 241 Q69 300 75 373 L84 373 Q84 300 88 241 Z"/>'
++'<path class="silhouette" d="M147 241 Q151 300 145 373 L136 373 Q136 300 132 241 Z"/>'
++'<path class="silhouette" d="M75 373 L84 373 L86 402 L74 402 Z"/>'
++'<path class="silhouette" d="M145 373 L136 373 L134 402 L146 402 Z"/>'
 +'</g>';
 document.getElementById('fig').innerHTML=FIG+'<g id="dots"></g>';
 
@@ -114,6 +114,22 @@ function tone(r){
   return null;
 }
 function amount(r){ return Math.min(1,Math.max(Math.abs(r.pressure)/1.2, r.pain, r.ct)); }
+
+async function loadLook(){
+  try{
+    const r=await fetch('/avatar',{cache:'no-store'});
+    if(!r.ok) return;
+    const b=await r.blob();
+    const u=URL.createObjectURL(b);
+    const svg=document.getElementById('fig');
+    svg.querySelectorAll('path.silhouette').forEach(p=>p.setAttribute('opacity','0.10'));
+    const img=document.createElementNS('http://www.w3.org/2000/svg','image');
+    img.setAttribute('href',u); img.setAttribute('x','0'); img.setAttribute('y','0');
+    img.setAttribute('width','220'); img.setAttribute('height','460');
+    img.setAttribute('preserveAspectRatio','xMidYMid meet');
+    svg.insertBefore(img, svg.firstChild);
+  }catch(e){}
+}
 
 function draw(regions){
   let h='';
@@ -164,6 +180,7 @@ function table(txt){
 }
 
 async function tick(){
+  if(!window.__look){window.__look=1;loadLook();}
   try{
     const d=await (await fetch('/state')).json();
     const bl=document.getElementById('bodyline');
@@ -185,5 +202,11 @@ createServer((req, res) => {
   };
   if (url === '/' ) return send(200, 'text/html; charset=utf-8', HTML);
   if (url === '/state') return send(200, 'application/json', JSON.stringify(payload()));
+  if (url === '/avatar') {
+    for (const [f, t] of [['/root/.dsh/soma-avatar.png','image/png'],['/root/.dsh/soma-avatar.jpg','image/jpeg'],['/root/.dsh/soma-avatar.webp','image/webp']]) {
+      if (existsSync(f)) return send(200, t, readFileSync(f));
+    }
+    return send(404, 'text/plain', 'none');
+  }
   return send(404, 'text/plain', 'not found');
 }).listen(port, '127.0.0.1', () => console.log(`soma 面板  http://127.0.0.1:${port}`));

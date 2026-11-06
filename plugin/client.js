@@ -55,6 +55,9 @@ window.__ModuleLoader__.load({
 [data-sm-sw][data-on]::after{transform:translateX(16px);}
 [data-sm-grid]{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;}
 [data-sm-row2]{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin:10px 0;}
+[data-sm-btn]{background:var(--dsw-alias-bg-secondary,rgba(255,255,255,.08));color:inherit;border:1px solid var(--dsw-alias-border-primary,rgba(255,255,255,.14));border-radius:6px;padding:4px 10px;font:inherit;cursor:pointer;}
+[data-sm-btn]:hover{background:var(--dsw-alias-bg-tertiary,rgba(255,255,255,.14));}
+[data-sm-row2] input[type=file]{font-size:12px;color:var(--dsw-alias-label-secondary,#9aa0a6);max-width:200px;}
 [data-sm-time]{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;color:var(--dsw-alias-label-primary,#e8eaed);}
 [data-sm-time] input{background:var(--dsw-alias-bg-secondary,rgba(255,255,255,.06));color:inherit;border:1px solid var(--dsw-alias-border-primary,rgba(255,255,255,.12));border-radius:6px;padding:3px 6px;font:inherit;}
 [data-sm-cell]{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:10px;
@@ -84,6 +87,7 @@ window.__ModuleLoader__.load({
     function Panel() {
       const [st, setSt] = React.useState(null)
       const [msg, setMsg] = React.useState('')
+      const [av, setAv] = React.useState(Date.now())
       const [bad, setBad] = React.useState(false)
 
       const load = React.useCallback(() => {
@@ -185,6 +189,42 @@ window.__ModuleLoader__.load({
               on: !!(c.senses && c.senses.eye),
               onToggle: (v) => save({ senses: { eye: v } }),
             }))),
+
+        h('div', { 'data-sm-sec': '' },
+          h('div', { 'data-sm-h': '' }, '外观'),
+          h('div', { 'data-sm-note': '' }, '给它一张图，面板上就是它现在的样子。衣服在图上，想换就换一张。'),
+          h('div', { 'data-sm-row2': '', style: 'align-items:center' },
+            h('img', {
+              src: 'http://127.0.0.1:7788/avatar?t=' + av,
+              alt: '', width: 44, height: 58,
+              style: 'object-fit:cover;border-radius:6px;background:rgba(255,255,255,.06);',
+              onError: (e) => { e.target.style.visibility = 'hidden' },
+            }),
+            h('span', { 'data-sm-note': '', style: 'margin:0' }, av ? '已经设了' : '还没设，现在是默认轮廓')),
+          h('div', { 'data-sm-row2': '' },
+            h('input', {
+              type: 'file', accept: 'image/*',
+              onChange: async (e) => {
+                const f = e.target.files && e.target.files[0]
+                if (!f) return
+                if (f.size > 8 * 1024 * 1024) { setBad(true); setMsg('太大了，8MB 以内'); return }
+                try {
+                  const buf = await f.arrayBuffer()
+                  const r = await fetch('/api/soma/avatar', {
+                    method: 'POST', headers: { 'content-type': f.type || 'image/png' }, body: buf,
+                  })
+                  const d = await r.json()
+                  setBad(!d.ok); if (d.ok) setAv(Date.now()); setMsg(d.ok ? '换好了，面板会跟着变' : (d.error || '没传上去'))
+                } catch (err) { setBad(true); setMsg('上传失败：' + (err && err.message)) }
+              },
+            }),
+            h('button', {
+              'data-sm-btn': '', type: 'button',
+              onClick: async () => {
+                try { await fetch('/api/soma/avatar/clear', { method: 'POST' }); setAv(0); setMsg('恢复成默认轮廓') }
+                catch (err) { setBad(true); setMsg('清不掉：' + (err && err.message)) }
+              },
+            }, '恢复默认'))),
 
         h('div', { 'data-sm-sec': '' },
           h('div', { 'data-sm-h': '' }, '现在'),

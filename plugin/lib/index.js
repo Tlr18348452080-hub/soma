@@ -6,7 +6,7 @@
  * 四个工具的参数里也没有「疼」字 —— 模型只能说物理量，疼不疼是算出来的。
  */
 
-import { readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, statSync, unlinkSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { Soma } from './soma/soma.mjs'
 
@@ -272,11 +272,48 @@ export function apply(root, config = {}) {
         handler: (req, res) => {
           Promise.resolve().then(async () => {
             const url = new URL(req.url || '/', 'http://x')
+            // 把当前那张图吐回去，设置页才能给人看「已经设了」
+            if (req.method === 'GET' && url.pathname === '/api/soma/avatar.png') {
+              for (const [e, t] of [['png','image/png'],['jpg','image/jpeg'],['webp','image/webp']]) {
+                const f = `/root/.dsh/soma-avatar.${e}`
+                try { const b = readFileSync(f); res.writeHead(200, {'content-type': t, 'cache-control':'no-store'}); return res.end(b) } catch {}
+              }
+              return sendJson(res, 404, { ok: false })
+            }
             if (req.method === 'GET') {
               return sendJson(res, 200, {
                 ok: true, cfg: readCfg(), words: soma.fmtWords(),
                 regions: soma.read().length,
               })
+            }
+            // 上传一张图，当作它现在的样子。面板直接铺上去。
+            if (req.method === 'POST' && url.pathname === '/api/soma/avatar') {
+              const chunks = []
+              for await (const c of req) chunks.push(c)
+              let buf = Buffer.concat(chunks)
+              const ct = String(req.headers['content-type'] || '')
+              if (ct.includes('json')) {
+                const { dataUrl } = JSON.parse(buf.toString('utf8') || '{}')
+                const m = /^data:(image\/[a-z+]+);base64,(.*)$/.exec(dataUrl || '')
+                if (!m) return sendJson(res, 400, { ok: false, error: '不是图片' })
+                buf = Buffer.from(m[2], 'base64')
+              }
+              if (buf.length < 64) return sendJson(res, 400, { ok: false, error: '空图' })
+              if (buf.length > 8 * 1024 * 1024) return sendJson(res, 413, { ok: false, error: '太大了，8MB 以内' })
+              const isPng = buf[0] === 0x89 && buf[1] === 0x50
+              const isJpg = buf[0] === 0xff && buf[1] === 0xd8
+              const ext = isPng ? 'png' : isJpg ? 'jpg' : 'webp'
+              for (const e of ['png', 'jpg', 'webp']) {
+                try { unlinkSync(`/root/.dsh/soma-avatar.${e}`) } catch {}
+              }
+              writeFileSync(`/root/.dsh/soma-avatar.${ext}`, buf)
+              return sendJson(res, 200, { ok: true, bytes: buf.length, ext })
+            }
+            if (req.method === 'POST' && url.pathname === '/api/soma/avatar/clear') {
+              for (const e of ['png', 'jpg', 'webp']) {
+                try { unlinkSync(`/root/.dsh/soma-avatar.${e}`) } catch {}
+              }
+              return sendJson(res, 200, { ok: true })
             }
             if (req.method === 'POST' && url.pathname === '/api/soma/config') {
               let raw = ''
