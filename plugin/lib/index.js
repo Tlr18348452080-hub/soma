@@ -236,7 +236,7 @@ export function apply(root, config = {}) {
     organs: {
       touch: true, thermal: true, ct: true, gravity: true,
       vitals: true, rhythm: true, homeo: true, endocrine: true,
-      cycle: true, brain: true, mood: true,
+      cycle: true, brain: true, mood: true, arousal: true,
     },
     extra: { tail: false, catEars: false },
     senses: { ear: false, eye: false },

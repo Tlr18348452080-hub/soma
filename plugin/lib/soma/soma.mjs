@@ -25,6 +25,7 @@ import { Muscle } from './channels/muscle.mjs';
 import { Vestib } from './channels/vestib.mjs';
 import { Chem } from './channels/chem.mjs';
 import { Mood } from './channels/mood.mjs';
+import { Arousal } from './channels/arousal.mjs';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 import { Ear } from './channels/ear.mjs';
@@ -47,6 +48,7 @@ export class Soma extends Body {
     this.use(new Vestib());       // 前庭与本体：转、晕、在哪儿
     this.use(new Chem());         // 味觉嗅觉
     this.use(new Mood());        // 心情：别的层的和，不是新信息
+    if (opts.intimate !== false) this.use(new Arousal(opts));  // 唤起：慢起慢落，有不应期
     if (opts.cycle !== false) this.use(new Cycle(opts));  // 月度慢波
     if (opts.ear) this.use(new Ear(opts));   // 耳蜗：滤波器组，输出的是谱
     if (opts.eye) this.use(new Eye(opts));   // 视网膜：暗适应、中央凹、视野
@@ -145,6 +147,11 @@ export class Soma extends Body {
   // 力是牛顿，面积是 cm²，温度是 °C。感受器吃的是压强。
   touch(part, forceN = 1, opts = {}) {
     this.lastContactAt = this.t;
+    const reg = this.touchCh?.region?.(part);
+    if (reg?.intimate && !this.muted.has('arousal')) {
+      // 碰私密区按压强大小推一把，不是开关
+      try { this.emit({ type: 'intimate', amount: Math.min(0.3, forceN / 60) }); } catch { /* 没这层就算了 */ }
+    }
     return this.emit({
       type: 'touch',
       part,
@@ -155,6 +162,9 @@ export class Soma extends Body {
       material: opts.material,
     });
   }
+  climax() { try { this.emit({ type: 'climax' }); } catch { /* */ } }
+  calm() { try { this.emit({ type: 'calm' }); } catch { /* */ } }
+
   release(part) {
     return this.emit({ type: 'release', part });
   }
@@ -303,6 +313,24 @@ export class Soma extends Body {
     return d;
   }
 
+  /**
+   * 当下最值得做的一件小事。只说事，不点工具名——
+   * 点了就变成脚本；说事，它自己会去找怎么办。
+   */
+  hint() {
+    const v = this.muted.has('vitals') ? null : this.get('vitals')?.read();
+    const hm = this.muted.has('homeo') ? null : this.get('homeo')?.read();
+    const rh = this.muted.has('rhythm') ? null : this.get('rhythm')?.read();
+    const mu = this.muted.has('muscle') ? null : this.get('muscle')?.read?.();
+    if (v && v.hunger > 0.8) return '该吃点东西了';
+    if (hm && hm.thirst > 0.55) return '该喝水了';
+    if (v && v.fatigue > 0.82) return '该停下来歇一会儿';
+    if (rh && !rh.asleep && rh.alert < 0.22) return '该睡了';
+    if (mu && (mu.sore?.trunk ?? 0) > 0.25) return '坐太久了，换个姿势';
+    if (v && v.hr > 120) return '心跳还没下来，先缓一下';
+    return null;
+  }
+
   fmtWords(threshold = 0.05) {
     const tier = (v, cuts) => {
       for (const [lim, w] of cuts) if (v < lim) return w;
@@ -359,6 +387,13 @@ export class Soma extends Body {
       else if (ey.brightness > 0.85) deep.push('晃眼');
       if (ey.dry > 0.4) deep.push('眼睛发干');
     }
+    const ar = on('arousal') ? this.get('arousal')?.read() : null;
+    if (ar) {
+      if (ar.level > 0.75) deep.push('身上发热，皮肤碰一下就抖，腿有点软');
+      else if (ar.level > 0.5) deep.push('身上发热，皮肤变得特别敏感');
+      else if (ar.level > 0.25) deep.push('身上有点热，皮肤比平时敏感');
+      if (ar.refract > 0.6) deep.push('身上发空，不想被碰');
+    }
     const md = on('mood') ? this.get('mood')?.read() : null;
     if (md) {
       if (md.valence <= -0.45) deep.push('心里堵得慌');
@@ -372,6 +407,8 @@ export class Soma extends Body {
     if (deep.length) out.push(deep.join('，'));
     const wants = this.desire();
     if (wants.length) out.push(wants.slice(0, 2).join('，'));
+    const h = this.hint();
+    if (h) out.push(h);
     return out.length ? out.join('；') : '身上没什么特别的动静';
   }
 
