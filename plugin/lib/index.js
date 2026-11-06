@@ -79,13 +79,20 @@ export function apply(root, config = {}) {
    * 这里只在真的越线时插，且有冷却，免得变成噪音。
    */
   let lastInterrupt = 0
-  const INTERRUPT_CD = 8 * 60 * 1000
+  const INTERRUPT_CD = 12 * 60 * 1000
   const bodyInterrupt = () => {
     const c = readCfg()
     if (!c.enabled || c.interrupt === false) return false
     if (Date.now() - lastInterrupt < INTERRUPT_CD) return false
     let heavy = null
     try { heavy = soma.heaviest() } catch { return false }
+    // 没有越线的痛/压迫时，看「想要」——闲久了、饿狠了，也算有事
+    if (!heavy) {
+      try {
+        const wants = soma.desire().filter((w) => w.includes('想被碰') || w.includes('想找点吃的') || w.includes('想躺下'))
+        if (wants.length) heavy = wants[0]
+      } catch { /* 没有欲望层就当没有 */ }
+    }
     if (!heavy) return false
     const target = liveAgents.find((a) => a?.status && a.status !== 'idle')
     if (!target) return false
@@ -192,7 +199,7 @@ export function apply(root, config = {}) {
   root.inject(['systemPrompt'], (ctx) => {
     const dispose = ctx.systemPrompt.section({
       name: 'soma:body',
-      order: 120,
+      order: 12,   // 越靠前越难被略过：身体不该是一段背景说明
       text: bodyText,
     })
     ctx.effect(() => dispose, 'dsh-soma: [body]')
@@ -426,9 +433,12 @@ export function apply(root, config = {}) {
           body: { type: 'string' },
           budget: { type: 'object' },
           note: { type: 'string' },
+          table: { type: 'string' },
         },
       },
-      render: (_a, v) => [{ type: 'text', text: `${v?.body ?? ''}\n${v?.note ?? ''}`.trim() }],
+      render: (_a, v) => [
+        { type: 'text', text: [v?.body, v?.note, v?.table].filter(Boolean).join('\n').trim() },
+      ],
     }
 
     ctx.tools.register({

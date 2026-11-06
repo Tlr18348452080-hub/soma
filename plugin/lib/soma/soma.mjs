@@ -144,6 +144,7 @@ export class Soma extends Body {
   // 能改状态的只有这几条路。没有 set()。
   // 力是牛顿，面积是 cm²，温度是 °C。感受器吃的是压强。
   touch(part, forceN = 1, opts = {}) {
+    this.lastContactAt = this.t;
     return this.emit({
       type: 'touch',
       part,
@@ -272,6 +273,36 @@ export class Soma extends Body {
     return worst;
   }
 
+  /**
+   * 「想要」。不是状态，是没被满足的那股劲儿。
+   * 状态告诉你现在什么样；想要告诉你接下来会去干什么。
+   * 人不是因为「疲劳 0.4」才去睡的，是因为困得受不了。
+   */
+  desire() {
+    const d = [];
+    const v = this.muted.has('vitals') ? null : this.get('vitals')?.read();
+    const hm = this.muted.has('homeo') ? null : this.get('homeo')?.read();
+    const rh = this.muted.has('rhythm') ? null : this.get('rhythm')?.read();
+    const md = this.muted.has('mood') ? null : this.get('mood')?.read();
+
+    if (v) {
+      if (v.hunger > 0.75) d.push('想找点吃的');
+      else if (v.hunger > 0.55) d.push('有点想吃东西');
+      if (v.fatigue > 0.8) d.push('想躺下');
+      else if (v.fatigue > 0.55) d.push('想歇一会儿');
+    }
+    if (hm && hm.thirst > 0.5) d.push('想喝水');
+    if (rh && !rh.asleep && rh.alert < 0.25) d.push('想找地方睡');
+    if (md && md.valence < -0.35 && md.arousal < 0.4) d.push('不想说话了');
+    if (md && md.irritability > 0.6) d.push('有点想呛人');
+
+    // 皮肤空太久：人闲着会手痒、想摸点什么。这是"没事找事"的来源。
+    const quiet = this.t - (this.lastContactAt ?? 0);
+    if (!this.muted.has('touch') && quiet > 45 * 60) d.push('身上空落落的，想被碰一下');
+
+    return d;
+  }
+
   fmtWords(threshold = 0.05) {
     const tier = (v, cuts) => {
       for (const [lim, w] of cuts) if (v < lim) return w;
@@ -339,6 +370,8 @@ export class Soma extends Body {
     const out = [];
     if (skin.length) out.push(skin.join('，'));
     if (deep.length) out.push(deep.join('，'));
+    const wants = this.desire();
+    if (wants.length) out.push(wants.slice(0, 2).join('，'));
     return out.length ? out.join('；') : '身上没什么特别的动静';
   }
 
