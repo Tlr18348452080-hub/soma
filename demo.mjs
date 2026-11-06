@@ -358,6 +358,37 @@ export function demo({ every = 1.0 } = {}) {
   }
   line('');
 
+  // ── 十六 ─────────────────────────────────────────────
+  {
+    line('十六、练完当天不酸，第二天才酸');
+    const s = new Soma({ clockHours: 9 });
+    s.step(1);
+    s.useMuscle('thigh', 0.95); s.useMuscle('calf', 0.95);
+    line('  深蹲到力竭。当天：');
+    for (const h of [0, 6, 18, 30, 48, 72]) {
+      s.step(h ? 6 * 3600 : 1);
+      line(`  第 ${String(h).padStart(2)} 小时：大腿酸痛 ${s.get('muscle').g('thigh').sore.toFixed(2)}`);
+    }
+    line('  → 酸痛不是练出来的那一下，是之后慢慢长出来的。24–48 小时才最疼。');
+  }
+  line('');
+
+  // ── 十七 ─────────────────────────────────────────────
+  {
+    line('十七、一直转，就不转了');
+    const s = new Soma({ clockHours: 12 });
+    s.step(1);
+    s.spin(0.8);
+    line(`  刚开始：天旋地转 ${s.get('vestib').read().spin.toFixed(2)}`);
+    for (const t of [10, 20, 40]) { s.step(t ? 10 : 0.1); line(`  转了 ${t} 秒：${s.get('vestib').read().spin.toFixed(2)}`); }
+    s.stopSpin();
+    line(`  刚停下：${s.get('vestib').read().spin.toFixed(2)}（反号了）`);
+    s.step(8);
+    line(`  八秒后：${s.get('vestib').read().spin.toFixed(2)}`);
+    line('  → 停下来的那一瞬间才是最难站的时候，信号反方向补了一下。');
+  }
+  line('');
+
   line('\n═══ 完 ═══');
   line('所有数字都是这几条方程自己算出来的：');
   line('  dS̄/dt = (S − S̄)/τ      R = k(S − S̄)      T_c = (e皮T皮 + e料T料)/(e皮 + e料)      dT/dt = (T_c − T)·e/R_th\n');

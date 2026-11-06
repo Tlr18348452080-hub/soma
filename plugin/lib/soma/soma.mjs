@@ -19,6 +19,9 @@ import { Brain } from './channels/brain.mjs';
 import { Circulation } from './channels/circulation.mjs';
 import { Immune } from './channels/immune.mjs';
 import { Cycle } from './channels/cycle.mjs';
+import { Muscle } from './channels/muscle.mjs';
+import { Vestib } from './channels/vestib.mjs';
+import { Chem } from './channels/chem.mjs';
 import { Mood } from './channels/mood.mjs';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -38,6 +41,9 @@ export class Soma extends Body {
     this.use(new Brain());       // 注意、恐惧、下行抑制
     this.use(new Circulation()); // 血压、血流、脸红
     this.use(new Immune());      // 炎症、发烧、病态行为
+    this.use(new Muscle(opts));   // 肌肉：力气、酸痛、抖
+    this.use(new Vestib());       // 前庭与本体：转、晕、在哪儿
+    this.use(new Chem());         // 味觉嗅觉
     this.use(new Mood());        // 心情：别的层的和，不是新信息
     if (opts.cycle !== false) this.use(new Cycle(opts));  // 月度慢波
     if (opts.ear) this.use(new Ear(opts));   // 耳蜗：滤波器组，输出的是谱
@@ -55,6 +61,27 @@ export class Soma extends Body {
   /** 喝点水。amount 是占体重的比例，一杯约 0.005。 */
   drink(amount = 0.005) { return this.emit({ type: 'drink', amount }); }
   /** 把注意力放到某个部位。几分钟就散。 */
+  /** 用一用某块肌肉。amount 0–1，七成以上才会开始酸痛。 */
+  useMuscle(group = 'grip', amount = 0.5) { return this.emit({ type: 'use', group, amount }); }
+
+  /** 全身发力。 */
+  effort(level = 0.5, seconds = 60) { return this.emit({ type: 'effort', level, seconds }); }
+
+  /** 转起来。 */
+  spin(rate = 0.5) { return this.emit({ type: 'spin', rate }); }
+
+  /** 不转了。 */
+  stopSpin() { return this.emit({ type: 'stop_spin' }); }
+
+  /** 晃一下：车颠、电梯、低头看手机。 */
+  jolt(level = 0.5) { return this.emit({ type: 'jolt', level }); }
+
+  /** 嘴里有东西。 */
+  taste(t) { return this.emit({ type: 'taste', ...t }); }
+
+  /** 闻到什么。 */
+  smell(level, name, pleasure) { return this.emit({ type: 'smell', level, name, pleasure }); }
+
   /** 换一身衣服。脱光了力就直打在皮肤上。 */
   dress(name = 'casual') { const t = this.get('touch'); if (t) t.applyDress(name); return this; }
 
