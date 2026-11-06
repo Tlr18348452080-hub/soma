@@ -50,6 +50,8 @@ export class Endocrine extends Channel {
     this.oxytocin = BASE.oxytocin;
     this.melatonin = BASE.melatonin;
     this.nightShift = 0;   // 由昼夜通道灌进来，供 read() 用
+    this._W = null;         // 上一刻的「过得好不好」，给奖励预测误差用
+    this.phase = 0;         // 相位性多巴胺：一阵一阵的，两分钟泄掉
     this.baseCortisol = BASE.cortisol;
     this.stressLoad = 0;   // 累积应激，慢变量。痛觉敏化跟它走，不跟瞬时皮质醇走
   }
@@ -103,6 +105,7 @@ export class Endocrine extends Channel {
 
     // 皮质醇的基线不是常数——它跟着昼夜节律走，醒后半小时有个晨峰
     this.baseCortisol = BASE.cortisol * (ctx?.rhythm?.cortisolMod ?? 1);
+    this._debt = ctx?.rhythm?.debt ?? 0;
     // 昼夜对激素的驱动：褪黑素跟着「天黑了没有」走，血清素跟着「天亮着」走
     const night = clamp(ctx?.rhythm?.melatonin ?? 0, 0, 1);
     this.nightShift = night;
@@ -115,18 +118,48 @@ export class Endocrine extends Channel {
     }
   }
 
+  // 奖励：身体自己给自己打分。
+  // 只奖励「变好了」，不惩罚「没变好」——相位的多巴胺本来就是一阵一阵的放电，
+  // 不是一条连续的信号。所以攒的是 phase，两分钟自己泄掉。
+  couple(ctx, h) {
+    const W = this.wellbeing(ctx);
+    if (this._W === null) { this._W = W; return; }
+    const dW = W - this._W;
+    this._W = W;
+    if (dW > 1e-4) this.phase = Math.max(this.phase, Math.min(1, dW * 3));
+    this.phase -= this.phase * Math.min(1, h / 120);
+  }
+
+  // 越高越好受。只有身体自己知道的分量，没有「心情」这种二手量。
+  wellbeing(ctx) {
+    const v = ctx?.vitals ?? {};
+    const touch = Array.isArray(ctx?.touch) ? ctx.touch : [];
+    let pain = 0;
+    for (const r of touch) pain += r.pain ?? 0;
+    const def = ctx?.homeo?.deficit ?? 0;
+    return (-1.0 * (v.fatigue ?? 0)
+      - 0.8 * (v.hunger ?? 0)
+      - 0.9 * Math.min(1, pain)
+      - 0.7 * this.stressLoad
+      - 1.2 * Math.max(0, def - 0.01) * 20
+      - 0.4 * Math.min(1, ctx?.rhythm?.debt ?? 0)
+      + 0.5 * Math.max(0, (ctx?.endocrine?.oxytocin ?? 0.3) - 0.3));
+  }
+
   read() {
     // 增益按「基线 = 1.0」归一化，这样没激素的时候身体还是原来的身体
     // 痛觉敏化跟「累积应激」走，不跟瞬时皮质醇走。
     // 这样晨峰不会把人变敏感——正常起床不是创伤。
-    const painGain = clamp(1 + 1.2 * this.stressLoad, 0.8, 2.2);
+    // 睡不够会痛觉过敏 [S]（睡眠剥夺降低痛阈，PMID 17535559）
+    const debt = this._debt ?? 0;
+    const painGain = clamp((1 + 1.2 * this.stressLoad) * (1 + 0.35 * Math.min(1, debt)), 0.8, 2.6);
     const comfortGain = clamp(0.40 + 1.33 * this.dopamine, 0.40, 1.60);
     // 基线 = 1.0：多巴胺掉一截就提不起劲，皮质醇升一截就做什么都费劲
     const motivation = clamp(1 + 1.0 * (this.dopamine - BASE.dopamine) - 0.9 * (this.cortisol - BASE.cortisol), 0.15, 1.15);
     return {
       cortisol: this.cortisol,
       adrenaline: this.adrenaline,
-      dopamine: this.dopamine,
+      dopamine: Math.max(0, Math.min(1, this.dopamine + this.phase)),
       painGain,
       comfortGain,
       motivation,

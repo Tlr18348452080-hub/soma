@@ -18,6 +18,8 @@ export class Channel {
   apply(_ev) {
     return false;
   }
+  // 通道之间的回灌。跑完所有 step 之后调，能反过来改别人。
+  couple(_ctx, _h) {}
   step(_dt, _ctx) {}
   read() {
     return {};
@@ -81,7 +83,10 @@ export class Body {
       const h = Math.min(sub, dt - acc);
       acc += h;
       this.t += h;
-      for (const ch of this.channels.values()) ch.step(h, ctx);
+      // 每小步重算一次快照：回灌要看到「刚刚」的别人，不能看一步之前的。
+      const live = this.snapshot();
+      for (const ch of this.channels.values()) ch.step(h, live);
+      for (const ch of this.channels.values()) ch.couple?.(live, h);
     }
     return this;
   }

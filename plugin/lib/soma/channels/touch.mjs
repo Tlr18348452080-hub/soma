@@ -328,7 +328,11 @@ export class Touch extends Channel {
       // 痛：阈值是硬的门，越过才开；跨过多少线性映射到 0–1
       const hot = Math.max(0, (r.T - HOT_PAIN) / 15);     // 45→60°C 映射到 0→1
       const cold = Math.max(0, (COLD_PAIN - r.T) / COLD_PAIN);
-      r.painNow = Math.min(1, Math.max(hot, cold) * painGain);
+      // 机械痛：压力过阈值才开始招募痛觉感受器 [G]
+      // 掐到 20 N/cm² 已经很难受了，30 以上接近忍不住
+      const pNow = r.P + r.pWeight;
+      const mech = Math.max(0, (pNow - 12) / 18);
+      r.painNow = Math.min(1, Math.max(hot, cold, mech) * painGain);
       r.painLoad += (r.painNow - r.painLoad) * Math.min(1, h / 60);
 
       // 抚摸：调谐曲线给目标值，然后像所有感觉一样适应

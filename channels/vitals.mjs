@@ -38,7 +38,7 @@ export class Vitals extends Channel {
   apply(ev) {
     if (ev.type === 'exert') { this.strain = Math.max(0, Math.min(1, ev.level ?? 0.5)); return true; }
     if (ev.type === 'rest') { this.strain = 0; return true; }
-    if (ev.type === 'eat') { this.stomach = 1; this.glucose += ev.carb ?? 1.5; return true; }
+    if (ev.type === 'eat') { this.stomach = 1; this.glucose += (ev.carb ?? 1.5) * 1.5; return true; }
     return false;
   }
 
@@ -52,18 +52,36 @@ export class Vitals extends Channel {
     // [G] 血糖：空腹基础消耗约 0.4 mmol/L/小时，满强度运动约 4。
     //     不写"自动回 5.2"的稳态项——真实的血糖会一直掉到吃东西为止，
     //     那才是"饿"能自己长出来的原因。
-    this.glucose -= (0.4 + 3.6 * this.strain) * (h / 3600);
+    this.glucose -= (0.4 + 1.6 * this.strain) * (h / 3600);
     this.glucose = Math.max(2.0, Math.min(12, this.glucose));
 
     // 疲劳：趋于 1 的饱和累积，恢复慢得多
     if (this.strain > 0.1) {
-      this.fatigue += (1 - this.fatigue) * this.strain * Math.min(1, h / TAU_FATIGUE);
+      // 平方：轻活几乎不累积，重活才掉得快。线性会把坐着写代码算成跑马拉松。
+      this.fatigue += (1 - this.fatigue) * Math.pow(this.strain, 3) * Math.min(1, h / TAU_FATIGUE);
     } else {
       this.fatigue -= this.fatigue * Math.min(1, h / 900);
     }
 
     // 胃排空：90% 约 2–3 小时 [G]
     this.stomach -= this.stomach * Math.min(1, h / 3600);
+  }
+
+  // 回灌：疼久了是真的会累；缺水也会。
+  couple(ctx, h) {
+    const t = ctx?.touch;
+    if (Array.isArray(t)) {
+      let pain = 0;
+      for (const r of t) pain += r.pain ?? 0;
+      if (pain > 0.01) {
+        const k = Math.min(1, pain * 0.8);
+        this.fatigue += (1 - this.fatigue) * k * Math.min(1, h / 1800);
+      }
+    }
+    const def = ctx?.homeo?.deficit ?? 0;
+    if (def > 0.02) {
+      this.fatigue += (1 - this.fatigue) * Math.min(1, (def - 0.02) * 30) * Math.min(1, h / 5400);
+    }
   }
 
   read() {
