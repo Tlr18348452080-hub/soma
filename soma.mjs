@@ -55,6 +55,12 @@ export class Soma extends Body {
   /** 喝点水。amount 是占体重的比例，一杯约 0.005。 */
   drink(amount = 0.005) { return this.emit({ type: 'drink', amount }); }
   /** 把注意力放到某个部位。几分钟就散。 */
+  /** 说了一堆话。脑子是要吃饭的。 */
+  burn(tokens) { return this.emit({ type: 'burn', tokens }); }
+
+  /** 主人开口了。这算投喂。 */
+  feed(tokens) { return this.emit({ type: 'feed', tokens }); }
+
   /** 病一场。level 0.5 像一次普通感冒 */
   sick(level = 0.5) {
     this.emit({ type: 'infect', level });

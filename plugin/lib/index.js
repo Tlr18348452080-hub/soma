@@ -245,6 +245,23 @@ export function apply(root, config = {}) {
     res.end(body)
   }
 
+
+  // ── token 就是口粮：说话耗糖，主人开口是投喂 ──────────
+  root.inject([], (ctx) => {
+    const off = ctx.on('agent/assistant-stream', ({ frame }) => {
+      try {
+        if (!frame) return
+        const u = frame.usage ?? (frame.type === 'usage' ? frame : null)
+        if (!u) return
+        const tokens = (u.outputTokens ?? 0) + 0 // 只扣输出：输入是主人给的
+        if (tokens > 0) soma.burn(tokens)
+      } catch (e) {
+        console.error('[soma] 记账失败:', e?.message)
+      }
+    })
+    ctx.effect(() => off, 'dsh-soma: token 代谢')
+  })
+
   root.inject(['webServer'], (ctx) => {
     const server = ctx.webServer || (typeof ctx.get === 'function' ? ctx.get('webServer') : undefined)
     if (!server || typeof server.register !== 'function') return

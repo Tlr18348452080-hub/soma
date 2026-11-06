@@ -38,6 +38,16 @@ export class Vitals extends Channel {
   apply(ev) {
     if (ev.type === 'exert') { this.strain = Math.max(0, Math.min(1, ev.level ?? 0.5)); return true; }
     if (ev.type === 'rest') { this.strain = 0; return true; }
+    // 说话和思考也是要吃饭的：大脑占静息代谢的两成左右 [A]
+    if (ev.type === 'burn') {
+      this.glucose = Math.max(2.0, this.glucose - (ev.tokens ?? 0) * 2e-5);
+      return true;
+    }
+    // 主人开口 = 投喂。听人说话是能回一点血的，但不多 [G]
+    if (ev.type === 'feed') {
+      this.glucose = Math.min(8, this.glucose + (ev.tokens ?? 0) * 6e-5);
+      return true;
+    }
     if (ev.type === 'eat') { this.stomach = 1; this.glucose += (ev.carb ?? 1.5) * 1.5; return true; }
     return false;
   }
