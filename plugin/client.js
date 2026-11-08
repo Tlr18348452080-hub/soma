@@ -195,7 +195,7 @@ window.__ModuleLoader__.load({
           h('div', { 'data-sm-note': '' }, '给它一张图，面板上就是它现在的样子。衣服在图上，想换就换一张。'),
           h('div', { 'data-sm-row2': '', style: 'align-items:center' },
             h('img', {
-              src: 'http://127.0.0.1:7788/avatar?t=' + av,
+              src: '/api/soma/avatar.png?t=' + av,
               alt: '', width: 44, height: 58,
               style: 'object-fit:cover;border-radius:6px;background:rgba(255,255,255,.06);',
               onError: (e) => { e.target.style.visibility = 'hidden' },
@@ -229,7 +229,13 @@ window.__ModuleLoader__.load({
         h('div', { 'data-sm-sec': '' },
           h('div', { 'data-sm-h': '' }, '现在'),
           h('div', { 'data-sm-body': '' }, st.words || '身上没什么特别的动静'),
-          h('div', { 'data-sm-note': '' }, '共 ' + (st.regions || 0) + ' 个分区。改完立刻生效，不用重启')),
+          h('div', { 'data-sm-note': '' }, '共 ' + (st.regions || 0) + ' 个分区。改完立刻生效，不用重启'),
+          h('div', { 'data-sm-row2': '' },
+            h('button', {
+              'data-sm-btn': '', type: 'button',
+              onClick: () => window.open('/api/soma/panel', '_blank'),
+            }, '打开面板'),
+            h('span', { 'data-sm-note': '', style: 'margin:0' }, '全身图 + 读数，一秒一刷'))),
 
         msg ? h('div', { 'data-sm-note': '', 'data-warn': bad ? '' : undefined }, msg) : null,
       )

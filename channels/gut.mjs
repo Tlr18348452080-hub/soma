@@ -47,14 +47,6 @@ export class Gut extends Channel {
       this.transitHours = 0;
       this.gas = clamp(this.gas - 0.35);
       this.lastToilet = this.body?.t ?? 0;
-      // 去厕所本来就带着排尿。以前只清肠道，膀胱留在 400 mL 憋着，
-      // 结果「上了厕所」和「憋得发紧」同时出现 —— 是 bug 不是设定。
-      if (this.bladder > 0) {
-        this.bladder = Math.max(0, this.bladder - this.blCap * 0.9);
-        this.leak = 0;
-        this.lastPee = this.body?.t ?? 0;
-      }
-      this.urgency = clamp((this.bladder - 200) / 250);
       return true;
     }
     if (ev.type === 'pee') {

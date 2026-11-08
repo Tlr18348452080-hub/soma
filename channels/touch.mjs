@@ -299,10 +299,6 @@ export class Touch extends Channel {
       const v = o.regions?.[r.id];
       if (!v) continue;
       [r.P, r.T, r.ct, r.slip, r.painNow, r.painLoad, r.pWeight, r.gain, r.barF, r.barS, r.thermBar, r.since] = v;
-      // 旧存档里可能躺着发散出来的垃圾（1e44 级）。bar 的数学上界就是 S∈[0,1]，
-      // 越界（含 NaN）只能是坏数据，直接归零——不然面板上会一直挂个科学计数法。
-      if (!(Math.abs(r.barF) <= 1)) r.barF = 0;
-      if (!(Math.abs(r.barS) <= 1)) r.barS = 0;
     }
   }
 
@@ -392,11 +388,6 @@ export class Touch extends Channel {
       // h/τ > 2 时欧拉会每步放大 (h/τ-1) 倍，直接指数爆炸（嘴唇压强炸到 1e132）。
       r.barF += (S - r.barF) * (1 - Math.exp(-h / r.tauF));
       r.barS += (S - r.barS) * (1 - Math.exp(-h / r.tauS));
-
-      // 活体自愈：bar 的数学上界就是 S∈[0,1]，溢出一定是数值事故（旧存档 / 极端参数）。
-      // 不等到下次 restore 才清，原地掐回去，别让 1e19 一路传进感受器。
-      if (!(r.barF >= 0 && r.barF <= 1)) r.barF = 0;
-      if (!(r.barS >= 0 && r.barS <= 1)) r.barS = 0;
 
       if (r.objT != null) {
         const Tc = this.contactTemp(r.objT, r.eObj ?? 1);

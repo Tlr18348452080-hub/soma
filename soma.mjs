@@ -35,6 +35,7 @@ import { SleepArch } from './channels/sleeparch.mjs';
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 import { Ear } from './channels/ear.mjs';
 import { Eye } from './channels/eye.mjs';
+import { Memory } from './channels/memory.mjs';
 
 const EPS = 1e-6;
 // 离线补推的上限。手机放一晚上是常事，但补三天会把「饿死」也算出来。
@@ -64,6 +65,7 @@ export class Soma extends Body {
     if (opts.cycle !== false) this.use(new Menstrual(opts));  // 内膜、经血、痛经、卫生用品
     if (opts.ear) this.use(new Ear(opts));   // 耳蜗：滤波器组，输出的是谱
     if (opts.eye) this.use(new Eye(opts));   // 视网膜：暗适应、中央凹、视野
+    if (opts.memory !== false) this.use(new Memory());  // 记忆：淡忘曲线，不是列表
     this.muted = new Set();                  // 设置页关掉的器官
   }
 
@@ -193,7 +195,8 @@ export class Soma extends Body {
   stroke(part, opts = {}) {
     this.lastContactAt = this.t;
     this._hit(part, 'stroke', opts.force ?? 1);
-    this.get('touch').stroke(part, opts);
+    // 走事件而不是直接调通道：抚摸也要能被记忆和其他层看见
+    return this.emit({ type: 'stroke', part, speed: opts.speed, force: opts.force, material: opts.material });
   }
 
   /** 停止抚摸 */
@@ -463,6 +466,12 @@ export class Soma extends Body {
   }
 
   recentLine() {
+    // 记忆通道没开（或还没有任何 trace）时退回旧的一跳式残留
+    const mem = this.get('memory');
+    if (mem) {
+      const line = mem.line();
+      if (line) return line;
+    }
     const h = this.hits || [];
     if (!h.length) return '';
     const x = h[h.length - 1];
@@ -552,10 +561,8 @@ export class Soma extends Body {
 
     // 新补的几层：只挑此刻真在响的那一两句，别把系统提示撑长
     const gu = on('gut') ? this.get('gut')?.read() : null;
-    if (gu) {
-      if (gu.urgency > 0.7) deep.push('膀胱胀得发紧');
-      else if (gu.urge > 0.7) deep.push('肚子胀，想上厕所');
-    }
+    // 想上厕所那类"想做点什么"的说法交给 desire()，这里只留纯体感，避免同一句话出现两遍
+    if (gu && gu.urgency > 0.7) deep.push('膀胱胀得发紧');
     const sk = on('skin') ? this.get('skin')?.read() : null;
     if (sk) {
       if (sk.bleeding > 0.1) deep.push('伤口在渗血');
@@ -563,10 +570,7 @@ export class Soma extends Body {
       if (sk.bruise > 0.4) deep.push('身上有块地方是青的');
     }
     const mn = on('menstrual') ? this.get('menstrual')?.read() : null;
-    if (mn) {
-      if (mn.cramp > 0.45) deep.push('小腹抽着疼，腰也酸');
-      else if (mn.active) deep.push('小腹沉沉地往下坠');
-    }
+    if (mn && mn.active && mn.cramp <= 0.45) deep.push('小腹沉沉地往下坠');
     const sa = on('sleeparch') ? this.get('sleeparch')?.read() : null;
     if (sa && sa.inertia > 0.4) deep.push('脑子还没转过来');
 
@@ -614,6 +618,8 @@ export class Soma extends Body {
     }
     const md = this.get('mood')?.read();
     if (md) lines.push(`— | 心情 | 效价 ${md.valence.toFixed(2)} | 唤醒 ${md.arousal.toFixed(2)}`);
+    const mm = this.get('memory')?.read();
+    if (mm) lines.push(`— | 记得 | ${mm.count} 条 | 最清楚 ${(mm.strength * 100).toFixed(0)}% | 淡忘 ${mm.forgot}`);
     const ar = this.muted.has('arousal') ? null : this.get('arousal')?.read();
     if (ar) {
       lines.push(`— | 唤起 | ${(ar.level * 100).toFixed(0)}% | 张力 ${(ar.tension * 100).toFixed(0)}%`);

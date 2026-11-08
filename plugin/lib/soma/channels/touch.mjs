@@ -299,19 +299,10 @@ export class Touch extends Channel {
       const v = o.regions?.[r.id];
       if (!v) continue;
       [r.P, r.T, r.ct, r.slip, r.painNow, r.painLoad, r.pWeight, r.gain, r.barF, r.barS, r.thermBar, r.since] = v;
-      // 旧存档里可能躺着发散出来的垃圾（1e44 级）。bar 的数学上界就是 S∈[0,1]，
-      // 越界（含 NaN）只能是坏数据，直接归零——不然面板上会一直挂个科学计数法。
-      if (!(Math.abs(r.barF) <= 1)) r.barF = 0;
-      if (!(Math.abs(r.barS) <= 1)) r.barS = 0;
     }
   }
 
   apply(ev) {
-    // 抚摸：机械量走同一条换能，但它另外挂一层「滑」的摩擦
-    if (ev.type === 'stroke') {
-      this.stroke(ev.part, ev);
-      return true;
-    }
     if (ev.type === 'touch') {
       const r = this.region(ev.part);
       const F = ev.force ?? 1;
@@ -387,16 +378,8 @@ export class Touch extends Channel {
     this._g = { focus: br?.focus ?? null, boost: br?.focusBoost ?? 1, cut: br?.otherCut ?? 1 };
     for (const r of this.regions) {
       const S = this.transduce(r.P + r.pWeight);
-      // 精确指数松弛：x += (目标-x)*(1-exp(-h/τ))。
-      // 不是 h/τ 的欧拉近似——catchUp 一步能走 60 s，τ 只有十几秒，
-      // h/τ > 2 时欧拉会每步放大 (h/τ-1) 倍，直接指数爆炸（嘴唇压强炸到 1e132）。
-      r.barF += (S - r.barF) * (1 - Math.exp(-h / r.tauF));
-      r.barS += (S - r.barS) * (1 - Math.exp(-h / r.tauS));
-
-      // 活体自愈：bar 的数学上界就是 S∈[0,1]，溢出一定是数值事故（旧存档 / 极端参数）。
-      // 不等到下次 restore 才清，原地掐回去，别让 1e19 一路传进感受器。
-      if (!(r.barF >= 0 && r.barF <= 1)) r.barF = 0;
-      if (!(r.barS >= 0 && r.barS <= 1)) r.barS = 0;
+      r.barF += (S - r.barF) * (h / r.tauF);
+      r.barS += (S - r.barS) * (h / r.tauS);
 
       if (r.objT != null) {
         const Tc = this.contactTemp(r.objT, r.eObj ?? 1);
@@ -406,7 +389,7 @@ export class Touch extends Channel {
       } else {
         r.T += (r.baseT - r.T) * Math.min(1, 0.05 * h);
       }
-      r.thermBar += (r.T - r.baseT - r.thermBar) * (1 - Math.exp(-h / 90));
+      r.thermBar += (r.T - r.baseT - r.thermBar) * (h / 90);
 
       // 痛：阈值是硬的门，越过才开；跨过多少线性映射到 0–1
       const hot = Math.max(0, (r.T - HOT_PAIN) / 15);     // 45→60°C 映射到 0→1
