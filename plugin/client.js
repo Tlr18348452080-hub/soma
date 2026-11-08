@@ -165,9 +165,9 @@ input[data-sm-range]::-moz-range-thumb{width:16px;height:16px;border:0;border-ra
 
 /* 读不到 */
 [data-sm-err]{display:flex;flex-direction:column;gap:10px;padding:16px}
-[data-sm-err-t{font-size:13.5px;line-height:20px;font-weight:500;
+[data-sm-err-t]{font-size:13.5px;line-height:20px;font-weight:500;
   color:var(--dsw-alias-state-error-primary,#c0392b)}
-[data-sm-err-m{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:17px;
+[data-sm-err-m]{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:17px;
   color:var(--sm-dim);word-break:break-all}
 
 /* 页脚 */
@@ -218,19 +218,28 @@ input[data-sm-range]::-moz-range-thumb{width:16px;height:16px;border:0;border-ra
       root.setAttribute('data-sm-modal', '')
       root.setAttribute('role', 'dialog')
       root.setAttribute('aria-label', title)
+      /* 关键定位写成内联样式：不依赖 <style> 有没有加载、有没有被裁掉 */
+      root.style.cssText = 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:2147483000;'
+        + 'display:flex;flex-direction:column;background:var(--dsw-alias-bg-base,#0b0f18)'
 
       const bar = document.createElement('div')
       bar.setAttribute('data-sm-modal-bar', '')
+      bar.style.cssText = 'display:flex;align-items:center;gap:10px;flex:0 0 auto;padding:11px 14px;'
+        + 'border-bottom:1px solid rgba(127,127,127,.24);background:var(--dsw-alias-bg-layer-1,transparent)'
       const t = document.createElement('div')
       t.setAttribute('data-sm-modal-t', '')
       t.textContent = title
+      t.style.cssText = 'font-size:13px;font-weight:600;line-height:18px'
       const hh = document.createElement('div')
       hh.setAttribute('data-sm-modal-hint', '')
       hh.textContent = hint || ''
+      hh.style.cssText = 'font-size:11.5px;line-height:16px;opacity:.6'
       const x = document.createElement('button')
       x.setAttribute('data-sm-modal-x', '')
       x.type = 'button'
       x.textContent = '关闭'
+      x.style.cssText = 'margin-left:auto;height:30px;padding:0 14px;border:0;cursor:pointer;'
+        + 'border-radius:8px;font:inherit;font-size:12.5px;color:inherit;background:rgba(127,127,127,.16)'
       x.addEventListener('click', closeSheet)
       bar.appendChild(t)
       if (hint) bar.appendChild(hh)
@@ -239,6 +248,7 @@ input[data-sm-range]::-moz-range-thumb{width:16px;height:16px;border:0;border-ra
       const fr = document.createElement('iframe')
       fr.setAttribute('data-sm-modal-frame', '')
       fr.setAttribute('title', title)
+      fr.style.cssText = 'flex:1 1 auto;width:100%;border:0;display:block;background:transparent'
       fr.src = url
 
       root.appendChild(bar)
@@ -510,7 +520,7 @@ input[data-sm-range]::-moz-range-thumb{width:16px;height:16px;border:0;border-ra
               }, '全身图')))),
 
         h('div', { 'data-sm-foot': '' },
-          h('span', {}, 'dsh-soma'),
+          h('span', {}, 'dsh-soma v4'),
           h('span', { 'data-sm-sep': '' }, '·'),
           h('span', {}, '一秒一算，五秒一存'),
           h('span', { 'data-sm-sep': '' }, '·'),
