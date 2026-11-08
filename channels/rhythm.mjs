@@ -41,22 +41,30 @@ export class Rhythm extends Channel {
 
   step(h) {
     this.clock += h;
+    const hours = h / 3600;
     if (this.asleep) {
       this.awake = 0;
       // 睡着才清腺苷。清得慢——睡八小时也未必清干净。
-      this.adenosine += (0.02 - this.adenosine) * Math.min(1, h / (TAU_CLEAR));
-      this.sleepDebt = Math.max(0, this.sleepDebt - h / 3600);
+      this.adenosine += (0.02 - this.adenosine) * Math.min(1, h / TAU_CLEAR);
+      // 按 0.9 偿还：睡 8 小时大概还 7.2 小时的债，剩下的是「睡不够」的那部分
+      this.sleepDebt = Math.max(0, this.sleepDebt - hours * 0.9);
     } else {
       this.awake += h;
       this.adenosine = clamp(this.adenosine + (1 - this.adenosine) * Math.min(1, h / TAU_BUILD), 0, 1);
-      this.sleepDebt += h / 3600 * 0.0;   // 缺觉只在欠的时候算，见 sleepDebtOf()
+      // 清醒超过 16 小时才开始欠觉；之后每小时按 0.6 小时记
+      // （熬一小时不等于少睡整一小时，第二天能补回来一部分）[G]
+      if (this.awake > 16 * 3600) this.sleepDebt = Math.min(48, this.sleepDebt + hours * 0.6);
     }
   }
 
   /** 现在欠了多少觉（小时）。清醒超过 16 小时开始记。 */
   debtHours() {
     // 16 小时是拐点：清醒 15.84 h 以上警觉度开始线性掉 [S]（PMID 12683469）
-    return Math.max(0, this.awake / 3600 - 16) + this.sleepDebt;
+    // 即时那段按一半算，别和 sleepDebt 重复计一份满的
+    // 上限 48：真实睡眠债不会无限线性累加，连熬几天之后主要是「功能受损」，
+    // 不是「欠了 80 小时觉」——那数字既睡不回来，也没法用来算别的。
+    const raw = Math.max(0, this.awake / 3600 - 16) * 0.5 + this.sleepDebt;
+    return Math.min(48, raw);
   }
 
   read() {
@@ -89,7 +97,27 @@ export class Rhythm extends Channel {
       alert,
       asleep: this.asleep,
       debt: this.debtHours(),
+      awakeHours: this.awake / 3600,
     };
+  }
+
+  dump() {
+    return {
+      clock: this.clock,
+      awake: this.awake,
+      asleep: this.asleep,
+      adenosine: this.adenosine,
+      sleepDebt: this.sleepDebt,
+    };
+  }
+
+  restore(o) {
+    if (!o || typeof o !== 'object') return;
+    if (Number.isFinite(o.clock)) this.clock = o.clock;
+    if (Number.isFinite(o.awake)) this.awake = o.awake;
+    if (typeof o.asleep === 'boolean') this.asleep = o.asleep;
+    if (Number.isFinite(o.adenosine)) this.adenosine = o.adenosine;
+    if (Number.isFinite(o.sleepDebt)) this.sleepDebt = o.sleepDebt;
   }
 }
 

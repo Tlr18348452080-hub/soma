@@ -24,7 +24,7 @@ export class Immune extends Channel {
       this.days = 0;
       return true;
     }
-    if (ev.type === 'heal') { this.inflam = 0; return true; }
+    if (ev.type === 'heal') { this.inflam = 0; this.peak = 0; this.days = 0; return true; }
     return false;
   }
 
@@ -50,5 +50,14 @@ export class Immune extends Channel {
       // 炎症因子直接敏化痛觉
       painGain: 1 + 0.8 * f,
     };
+  }
+
+  dump() { return { inflam: this.inflam, peak: this.peak, days: this.days }; }
+
+  restore(o) {
+    if (!o || typeof o !== 'object') return;
+    for (const k of ['inflam', 'peak', 'days']) {
+      if (Number.isFinite(o[k])) this[k] = o[k];
+    }
   }
 }

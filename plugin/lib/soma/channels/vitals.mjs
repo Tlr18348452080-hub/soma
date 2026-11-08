@@ -19,18 +19,19 @@ export class Vitals extends Channel {
     this.glucose = 5.2;     // mmol/L
     this.fatigue = 0;       // 0–1，MVC 已损失的比例
     this.stomach = 0.6;     // 胃内容 0–1（起床时胃里还有点东西）
+    this.energy = 0.75;     // 长期能量储备 0–1（不是血糖，是「这几天吃得够不够」）
     this.resp = 0.25;       // 呼吸深度 0–1（这里只是跟着 strain 走）
   }
 
   /** 开始用力。level 0–1：坐着 0，走路 0.2，跑步 0.7，拼了 1.0 */
   dump() {
     return { hr: this.hr, glucose: this.glucose, fatigue: this.fatigue,
-             stomach: this.stomach, strain: this.strain ?? 0 };
+             stomach: this.stomach, energy: this.energy, strain: this.strain ?? 0 };
   }
 
   restore(o) {
     if (!o) return;
-    for (const k of ['hr', 'glucose', 'fatigue', 'stomach', 'strain']) {
+    for (const k of ['hr', 'glucose', 'fatigue', 'stomach', 'energy', 'strain']) {
       if (typeof o[k] === 'number') this[k] = o[k];
     }
   }
@@ -48,7 +49,13 @@ export class Vitals extends Channel {
       this.glucose = Math.min(8, this.glucose + (ev.tokens ?? 0) * 6e-5);
       return true;
     }
-    if (ev.type === 'eat') { this.stomach = 1; this.glucose += (ev.carb ?? 1.5) * 1.5; return true; }
+    if (ev.type === 'eat') {
+      this.stomach = 1;
+      this.glucose += (ev.carb ?? 1.5) * 1.5;
+      // 一顿饭补不回几天 —— 每餐往长期储备里加的只有这么点
+      this.energy = Math.min(1, this.energy + 0.03 + 0.05 * (ev.carb ?? 1.5));
+      return true;
+    }
     return false;
   }
 
@@ -75,6 +82,12 @@ export class Vitals extends Channel {
 
     // 胃排空：90% 约 2–3 小时 [G]
     this.stomach -= this.stomach * Math.min(1, h / 3600);
+
+    // 长期储备：血糖是几小时的事，这个是几天的。
+    // 按收支记：静息一天掉 0.18，动起来掉得更快；每餐只补一点点。
+    // 所以一天没吃不会立刻虚，连着几天才会 —— 这才是"累积"。
+    const drain = (0.18 / 24) * (h / 3600) * (1 + 1.2 * this.strain);
+    this.energy = Math.max(0, Math.min(1, this.energy - drain));
   }
 
   // 回灌：疼久了是真的会累；缺水也会。
@@ -101,7 +114,10 @@ export class Vitals extends Channel {
       hr: this.hr,
       glucose: this.glucose,
       fatigue: this.fatigue,
-      hunger: Math.min(1, 0.6 * empty + 0.7 * low),
+      energy: this.energy,
+      // 饥饿 = 胃空 + 血糖低 + 长期储备见底。第三项不随一顿饭消失，
+      // 所以「这几天一直没好好吃」会留在身上。
+      hunger: Math.min(1, 0.45 * empty + 0.55 * low + 0.30 * (1 - this.energy)),
       breath: this.resp,
       strain: this.strain,
     };

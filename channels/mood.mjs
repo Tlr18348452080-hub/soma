@@ -90,4 +90,12 @@ export class Mood extends Channel {
       irritability: this.irritability,
     };
   }
+
+  dump() { return { valence: this.valence, arousal: this.arousal }; }
+
+  restore(o) {
+    if (!o || typeof o !== 'object') return;
+    if (Number.isFinite(o.valence)) this.valence = o.valence;
+    if (Number.isFinite(o.arousal)) this.arousal = o.arousal;
+  }
 }

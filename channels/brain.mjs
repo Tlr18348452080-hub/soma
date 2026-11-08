@@ -131,4 +131,24 @@ export class Brain extends Channel {
       otherCut,
     };
   }
+
+  dump() {
+    return {
+      focus: this.focus, focusGain: this.focusGain,
+      fear: this.fear, fearFast: this.fearFast, habituate: this.habituate,
+      thalamicGate: this.thalamicGate, intero: this.intero, inhibit: this.inhibit,
+      conflict: this.conflict, valence: this.valence,
+      endorphin: this.endorphin, cpm: this.cpm,
+    };
+  }
+
+  restore(o) {
+    if (!o || typeof o !== 'object') return;
+    // focus 可能是 null，单独处理
+    if (o.focus === null || typeof o.focus === 'string') this.focus = o.focus;
+    for (const k of ['focusGain', 'fear', 'fearFast', 'habituate', 'thalamicGate',
+      'intero', 'inhibit', 'conflict', 'valence', 'endorphin', 'cpm']) {
+      if (Number.isFinite(o[k])) this[k] = o[k];
+    }
+  }
 }

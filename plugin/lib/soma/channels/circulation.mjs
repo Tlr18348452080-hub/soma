@@ -83,4 +83,20 @@ export class Circulation extends Channel {
       ortho: this.ortho,
     };
   }
+
+  dump() {
+    return {
+      sbp: this.sbp, dbp: this.dbp,
+      skinFlow: this.skinFlow, faceFlow: this.faceFlow,
+      lastPose: this.lastPose, ortho: this.ortho, dizzy: this.dizzy,
+    };
+  }
+
+  restore(o) {
+    if (!o || typeof o !== 'object') return;
+    for (const k of ['sbp', 'dbp', 'skinFlow', 'faceFlow', 'ortho', 'dizzy']) {
+      if (Number.isFinite(o[k])) this[k] = o[k];
+    }
+    if (typeof o.lastPose === 'string') this.lastPose = o.lastPose;
+  }
 }

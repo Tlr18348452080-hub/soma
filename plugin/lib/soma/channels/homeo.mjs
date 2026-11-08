@@ -82,6 +82,8 @@ export class Homeo extends Channel {
     const perceived = clamp(thirst - 0.75 * this.mouthSat, 0, 1);
     return {
       hydration: 1 - this.deficit,
+      deficit: this.deficit,
+      mouthSat: this.mouthSat,
       thirst: perceived,
       thirstRaw: thirst,
       coreT: this.coreT,
@@ -89,5 +91,23 @@ export class Homeo extends Channel {
       sweat: this.sweat,
       shiver: this.shiver,
     };
+  }
+
+  dump() {
+    return {
+      deficit: this.deficit,
+      coreT: this.coreT,
+      resp: this.resp,
+      sweat: this.sweat,
+      shiver: this.shiver,
+      mouthSat: this.mouthSat,
+    };
+  }
+
+  restore(o) {
+    if (!o || typeof o !== 'object') return;
+    for (const k of ['deficit', 'coreT', 'resp', 'sweat', 'shiver', 'mouthSat']) {
+      if (Number.isFinite(o[k])) this[k] = o[k];
+    }
   }
 }

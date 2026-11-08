@@ -28,6 +28,7 @@ const BASE = {
   serotonin: 0.50,   // 白天高、夜里低；它是「日照出来的」，不是「想出来的」[A]
   oxytocin: 0.30,    //  sociaux 事件顶上来，几分钟就退
   melatonin: 0.05,   // 夜里起，白天几乎为零
+  androgen: 0.55,    // 睾酮代理：晨峰、睡不够会掉、慢性应激会压 [A] 方向，值 [G]
 };
 
 // 一阶回归的时间常数（秒）
@@ -38,6 +39,7 @@ const TAU = {
   serotonin: 5400,   // 90 分钟。它是合成与释放的慢平衡，不是一次放电 [G]
   oxytocin: 1800,    // 30 分钟。社交事件后的尾巴 [G]
   melatonin: 1800,   // 30 分钟。松果体分泌，起得慢 [A]
+  androgen: 5400,    // 90 分钟。昼夜幅度 20–30%，这里用保守值 [A]
 };
 
 export class Endocrine extends Channel {
@@ -49,6 +51,7 @@ export class Endocrine extends Channel {
     this.serotonin = BASE.serotonin;
     this.oxytocin = BASE.oxytocin;
     this.melatonin = BASE.melatonin;
+    this.androgen = BASE.androgen;
     this.nightShift = 0;   // 由昼夜通道灌进来，供 read() 用
     this._W = null;         // 上一刻的「过得好不好」，给奖励预测误差用
     this.phase = 0;         // 相位性多巴胺：一阵一阵的，两分钟泄掉
@@ -86,6 +89,13 @@ export class Endocrine extends Channel {
         this.adrenaline = clamp(this.adrenaline + l * 0.5, 0, 1);
         return true;
       }
+      case 'climax': {
+        // 高潮后的催产素尾巴是真的（[A] 方向），幅度是估的 [G]。
+        // 这里只搭一手，返回 false 让 arousal 自己去结算张力。
+        this.oxytocin = clamp(this.oxytocin + 0.35, 0, 1);
+        this.dopamine = clamp(this.dopamine + 0.15, 0, 1);
+        return false;
+      }
       default:
         return false;
     }
@@ -111,8 +121,18 @@ export class Endocrine extends Channel {
     // 昼夜对激素的驱动：褪黑素跟着「天黑了没有」走，血清素跟着「天亮着」走
     const night = clamp(ctx?.rhythm?.melatonin ?? 0, 0, 1);
     this.nightShift = night;
+    // 睾酮的昼夜：早上 8 点前后最高，晚上最低；幅度按 18% 算，比文献保守 [A]
+    const dayFrac = ((Number(ctx?.rhythm?.clock) || 0) % 86400) / 86400;
+    const circadian = 0.82 + 0.18 * Math.cos(2 * Math.PI * (dayFrac - 8 / 24));
+    const debt01 = clamp((this._debt ?? 0) / 6, 0, 1);
+    // 长期吃不够也会压睾酮（能量可用性下降）[A] 方向，系数取保守值
+    const energy = clamp(Number(ctx?.vitals?.energy ?? 1), 0, 1);
+    const androTarget = BASE.androgen * circadian
+      * (1 - 0.22 * debt01)
+      * (1 - 0.25 * this.stressLoad)
+      * (0.65 + 0.35 * energy);
     const target = { ...BASE, cortisol: this.baseCortisol, melatonin: 0.05 + 0.85 * night,
-      serotonin: 0.18 + 0.62 * (1 - night) };
+      serotonin: 0.18 + 0.62 * (1 - night), androgen: androTarget };
     this.stressLoad += (0 - this.stressLoad) * Math.min(1, h / 10800);
     for (const k of Object.keys(TAU)) {
       const b = target[k] ?? BASE[k];
@@ -171,8 +191,34 @@ export class Endocrine extends Channel {
       serotonin: this.serotonin,
       oxytocin: this.oxytocin,
       melatonin: this.melatonin,
+      androgen: this.androgen,
       // 褪黑素本身不是「困」，它是「天黑了」的化学读数；困由腺苷负责
       nightShift: this.nightShift,
     };
+  }
+
+  dump() {
+    return {
+      cortisol: this.cortisol,
+      adrenaline: this.adrenaline,
+      dopamine: this.dopamine,
+      serotonin: this.serotonin,
+      oxytocin: this.oxytocin,
+      melatonin: this.melatonin,
+      androgen: this.androgen,
+      stressLoad: this.stressLoad,
+      phase: this.phase,
+      baseCortisol: this.baseCortisol,
+      W: this._W,
+    };
+  }
+
+  restore(o) {
+    if (!o || typeof o !== 'object') return;
+    for (const k of ['cortisol', 'adrenaline', 'dopamine', 'serotonin', 'oxytocin',
+      'melatonin', 'androgen', 'stressLoad', 'phase', 'baseCortisol']) {
+      if (Number.isFinite(o[k])) this[k] = o[k];
+    }
+    if (Number.isFinite(o.W)) this._W = o.W;
   }
 }

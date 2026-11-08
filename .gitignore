@@ -2,3 +2,5 @@ node_modules/
 *.log
 *.json.bak
 .DS_Store
+eye-demo.png
+eye-fixate.png

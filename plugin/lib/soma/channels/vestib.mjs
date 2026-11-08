@@ -38,9 +38,9 @@ export class Vestib extends Channel {
   }
 
   step(dt, ctx) {
-    const brain = ctx.get?.('brain')?.read?.() ?? {};
-    const circ = ctx.get?.('circulation')?.read?.() ?? {};
-    const vit = ctx.get?.('vitals')?.read?.() ?? {};
+    const brain = ctx?.brain ?? {};
+    const circ = ctx?.circulation ?? {};
+    const vit = ctx?.vitals ?? {};
 
     // 转起来之后，感觉会被适应掉（τ≈20 秒）
     // 一直转，感觉会被适应掉：τ ≈ 20 秒，转久了就不转了 [A]

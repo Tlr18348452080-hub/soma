@@ -9,6 +9,7 @@
 import { readFileSync, writeFileSync, mkdirSync, statSync, unlinkSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { Soma } from './soma/soma.mjs'
+import { parseTouch } from './touchwords.mjs'
 
 export const name = 'dsh-soma'
 
@@ -192,7 +193,13 @@ export function apply(root, config = {}) {
   const bodyText = () => {
     if (!readCfg().enabled) return ''
     const since = sinceLine()
-    return `[body] ${soma.fmtWords()}${since ? ' ' + since : ''}`
+    const head = `[body] ${soma.fmtWords()}${since ? ' ' + since : ''}`
+    let hint = null
+    try { hint = soma.hint() } catch { /* 算不出来就不提示 */ }
+    // 这一行是给模型的硬提醒：身体不是背景描述，是要动手去碰的东西。
+    const rule =
+      '（上面是方程算出来的身体状态，不是修辞。想碰它、想知道细节、想让它做点什么，调 soma_do；要看全身，调 soma_note。不调工具，身体不会因为一句话自己动。）'
+    return `${head}\n[rule] ${rule}${hint ? '\n[hint] ' + hint : ''}`
   }
 
   /* ───────── 系统提示：每轮刷新的一行 ───────── */
@@ -326,6 +333,82 @@ export function apply(root, config = {}) {
       }
     })
     ctx.effect(() => off, 'dsh-soma: token 代谢')
+  })
+
+  // ── 从对话里自己认出「谁碰了哪儿」──────────────────────
+  // 不要求模型调工具。短对话长对话一视同仁，不占主模型 token。
+  const seenHits = new Set()
+  const applyActs = (text, key) => {
+    if (!text) return
+    if (key && seenHits.has(key)) return
+    if (key) { seenHits.add(key); if (seenHits.size > 400) seenHits.delete(seenHits.values().next().value) }
+    if (text.startsWith('【身体】') || text.startsWith('【作息】')) return
+    const acts = parseTouch(text)
+    if (!acts.length) return
+    for (const a of acts) {
+      if (!soma.get('touch')?.byId.has(a.part)) continue
+      if (a.type === 'stroke') {
+        soma.stroke(a.part, { speed: a.speed ?? 3, force: a.forceN })
+        soma.step(1.2)
+        soma.stop(a.part)
+        soma.step(0.2)
+      } else {
+        soma.touch(a.part, a.forceN, { contact: a.contact })
+        soma.step(0.1)
+      }
+    }
+    try { save() } catch { /* */ }
+    console.log('[soma] 从对话里认到动作:', acts.map((a) => `${a.type}:${a.part}:${a.forceN}`).join(' '))
+  }
+
+  const textOf = (content) =>
+    (Array.isArray(content) ? content : [])
+      .map((b) => (b && b.type === 'text' ? String(b.text ?? '') : ''))
+      .join('\n')
+
+  // 主线：每一步模型思考之前，扫一遍这一步带进来的用户消息
+  root.inject(['agents'], (ctx) => {
+    const off = ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
+      const decision = await next()
+      try {
+        if (decision && decision.kind !== 'reject') {
+          for (const m of decision.messages ?? []) {
+            if (!m || m.source?.kind !== 'user') continue
+            const t = textOf(m.content)
+            if (t) applyActs(t, m.id ? `p:${m.id}` : `p:${t.slice(0, 60)}`)
+          }
+        }
+        // 反向补一条：模型自己说「我摸了摸你的头」，也算真的发生了。
+        // 工具调用是正路，但模型经常只写不调——那就让写出来的字落地。
+        let lastAsst = null
+        for (const m of decision.messages ?? []) {
+          if (m && m.role === 'assistant') lastAsst = m
+        }
+        if (lastAsst) {
+          const t = textOf(lastAsst.content)
+          if (t) applyActs(t, lastAsst.id ? `a:${lastAsst.id}` : `a:${t.slice(0, 60)}`)
+        }
+      } catch (e) {
+        console.error('[soma] pre-step 解析失败:', e?.message)
+      }
+      return decision
+    })
+    ctx.effect(() => off, 'dsh-soma: pre-step 里的动作')
+  })
+
+  // 备线：消息刚进收件箱就处理（有些路径不走 pre-step）
+  root.inject(['agents'], (ctx) => {
+    const off = ctx.on('agent/inbox/inserted', ({ message }) => {
+      try {
+        if (!message || message.role !== 'user') return
+        const t = textOf(message.content)
+        const id = message.id ?? message.messageId
+        applyActs(t, id ? `i:${id}` : `i:${t.slice(0, 60)}`)
+      } catch (e) {
+        console.error('[soma] inbox 解析失败:', e?.message)
+      }
+    })
+    ctx.effect(() => off, 'dsh-soma: 收件箱里的动作')
   })
 
   root.inject(['webServer'], (ctx) => {
@@ -735,6 +818,150 @@ export function apply(root, config = {}) {
         soma.emit({ type: 'hug', amount: Math.max(0, Math.min(1, Number(a?.amount) || 0.6)) })
         soma.step(30)
         return reply('记下了。')
+      },
+    })
+
+    // ── 万能入口：一个工具管所有动作 ────────────────
+    // 17 个具名工具对模型是负担：名字太多，挑不出来就不挑了。
+    // 留一个 soma_do，action 里选做什么 —— 决策成本从「选工具」降到「填参数」。
+    ctx.tools.register({
+      name: 'soma_do',
+      description:
+        '对身体做一件事，一个入口管全部动作：摸/掐/抱、吃、喝、睡、醒、动、休息、换姿势、划伤、淤青、按住伤口、抓痒、上厕所、尿、换卫生用品、来月经、痛经。参数 action 选动作，其余按需填。返回做完之后的身体读数。',
+      parameters: schema(
+        {
+          action: {
+            type: 'string',
+            description:
+              '动作：touch / stroke / release / eat / drink / rest / sleep / wake / pose / exert / focus / hug / cut / bruise / bandage / scratch / toilet / pee / menses / cramp / pad / wipe / note',
+          },
+          part: { type: 'string', description: partDesc },
+          force_n: { type: 'number', description: '法向力，牛顿。掐约 20，捏脸约 10，摸头约 1。' },
+          contact: { type: 'string', enum: ['tip', 'flat', 'edge'], description: '接触几何：点 / 面 / 线' },
+          speed: { type: 'number', description: 'stroke 的滑动速度 cm/s（1–10 是舒服的那段）' },
+          amount: { type: 'number', description: '量：喝水占体重比例约 0.005；尿量 mL；抱的强度 0–1' },
+          level: { type: 'number', description: '强度 0–1：运动、痛经、出血程度' },
+          seconds: { type: 'number', description: '持续秒数（rest / exert）' },
+          carb: { type: 'number', description: '碳水量 0–3，一碗饭约 1.5（eat）' },
+          pose: { type: 'string', description: 'standing / sitting / lying_supine / kneeling / side_lying' },
+          area: { type: 'number', description: '伤口面积 cm²（cut）' },
+          depth: { type: 'number', description: '伤口深度 0–1（cut）' },
+          kind: { type: 'string', description: '卫生用品类型（pad）' },
+        },
+        ['action'],
+      ),
+      output: outSchema,
+      execute: async (a) => {
+        const act = String(a?.action || '').toLowerCase()
+        const part = a?.part
+        const num = (x, d) => (Number.isFinite(Number(x)) ? Number(x) : d)
+        let note = '做完了。'
+        try {
+          switch (act) {
+            case 'touch':
+              soma.touch(part, num(a?.force_n, 1), { contact: a?.contact })
+              soma.step(0.2)
+              note = `碰到${part || '身上'}了。`
+              break
+            case 'stroke':
+              soma.stroke(part, { speed: num(a?.speed, 3), force: num(a?.force_n, 0.6) })
+              soma.step(1.2)
+              soma.stop(part)
+              soma.step(0.2)
+              note = `在${part || '身上'}上滑了一下。`
+              break
+            case 'release':
+              soma.release(part)
+              note = `松开了${part || ''}。`
+              break
+            case 'eat':
+              soma.eat(num(a?.carb, 1.5))
+              soma.step(60)
+              note = '吃下去了。'
+              break
+            case 'drink':
+              soma.drink(num(a?.amount, 0.005))
+              soma.step(30)
+              note = '喝了几口。'
+              break
+            case 'rest':
+              soma.rest(num(a?.seconds, 300))
+              note = '歇了一会儿。'
+              break
+            case 'sleep':
+              soma.sleep()
+              note = '睡下了。'
+              break
+            case 'wake':
+              soma.wake()
+              note = '醒了。'
+              break
+            case 'pose':
+              soma.setPose(a?.pose || 'sitting')
+              note = `换成${a?.pose || 'sitting'}了。`
+              break
+            case 'exert':
+              soma.exert(num(a?.level, 0.4), num(a?.seconds, 60))
+              note = '动起来了。'
+              break
+            case 'focus':
+              soma.focus(part, num(a?.level, 0.6))
+              note = `注意力挪到${part || '身上'}了。`
+              break
+            case 'hug':
+              soma.emit({ type: 'hug', amount: Math.max(0, Math.min(1, num(a?.amount, 0.6))) })
+              soma.step(30)
+              note = '被抱住了。'
+              break
+            case 'cut':
+              soma.cut(part || 'forearm', num(a?.area, 3), num(a?.depth, 0.25))
+              note = '划了一道口子。'
+              break
+            case 'bruise':
+              soma.bruise(part || 'thigh', num(a?.level, 0.5))
+              note = '留了一块青。'
+              break
+            case 'bandage':
+              soma.bandage()
+              note = '按住了伤口。'
+              break
+            case 'scratch':
+              soma.scratch()
+              note = '抓了两下。'
+              break
+            case 'toilet':
+              soma.toilet(num(a?.amount, 0.6))
+              note = '去了一趟。'
+              break
+            case 'pee':
+              soma.pee(num(a?.amount, 400))
+              note = '上过厕所了。'
+              break
+            case 'menses':
+              soma.menses(num(a?.level, 1))
+              note = '来了。'
+              break
+            case 'cramp':
+              soma.cramp(num(a?.level, 0.5))
+              note = '小腹抽了一下。'
+              break
+            case 'pad':
+              soma.pad(a?.kind || 'pad')
+              note = '换好了。'
+              break
+            case 'wipe':
+              soma.wipe()
+              note = '擦干净了。'
+              break
+            case 'note':
+              return reply('这是当前的全身状态表。\n\n' + soma.table())
+            default:
+              return reply(`没有「${act}」这个动作。可用：touch/stroke/release/eat/drink/rest/sleep/wake/pose/exert/focus/hug/cut/bruise/bandage/scratch/toilet/pee/menses/cramp/pad/wipe/note`)
+          }
+        } catch (e) {
+          return reply(`这个动作没做成：${e?.message ?? e}`)
+        }
+        return reply(note)
       },
     })
 

@@ -41,7 +41,7 @@ export class Chem extends Channel {
   }
 
   step(dt, ctx) {
-    const vit = ctx.get?.('vitals')?.read?.() ?? {};
+    const vit = ctx?.vitals ?? {};
     const hunger = vit.hunger ?? 0;
     // 嗅觉适应：τ ≈ 40 秒（闻久了就闻不到）[A]
     this.smellBar += (this.smell - this.smellBar) * Math.min(1, dt / 40);

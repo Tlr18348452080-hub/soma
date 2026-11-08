@@ -55,8 +55,8 @@ export class Muscle extends Channel {
   }
 
   step(dt, ctx) {
-    const v = ctx.get?.('vitals');
-    const fatigue = v?.read?.().fatigue ?? 0;
+    const v = ctx?.vitals;
+    const fatigue = v?.fatigue ?? 0;
     // 用掉的力气恢复：快（τ≈6 分钟）
     const back = 1 - Math.exp(-dt / 360);
     for (const g of this.groups) {
