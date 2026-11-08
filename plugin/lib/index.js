@@ -68,6 +68,9 @@ export function apply(root, config = {}) {
         a.followup({
           id: `soma-wake-${Date.now()}`,
           role: 'user',
+          // v4 会话日志要求每条 inbox 消息带 producer 自己声明的 source；
+          // 漏了它，日志会在下次加载时抛 SessionFormatError。
+          source: { kind: 'soma', form: 'notice', summary: '作息：刚醒，状态偏慢' },
           content: [{ type: 'text', text }],
         })
         return true
@@ -103,6 +106,7 @@ export function apply(root, config = {}) {
       target.followup({
         id: `soma-bodynudge-${Date.now()}`,
         role: 'user',
+        source: { kind: 'soma', form: 'notice', summary: `身体：${String(heavy).slice(0, 100)}` },
         content: [{ type: 'text', text: `【身体】${heavy}。这不是新任务，是你自己身上的事——接着做手上的，顺带知道它在。` }],
       })
       return true

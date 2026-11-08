@@ -175,11 +175,80 @@ input[data-sm-range]::-moz-range-thumb{width:16px;height:16px;border:0;border-ra
   font-size:11.5px;line-height:17px;color:var(--sm-faint)}
 [data-sm-foot] [data-sm-sep]{opacity:.5}
 
+/* 全身面板：全屏浮层（点得进来，也点得出去） */
+[data-sm-modal]{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;
+  background:var(--dsw-alias-bg-base,#0b0f18);animation:sm-fade .16s ease}
+[data-sm-modal-bar]{display:flex;align-items:center;gap:10px;flex:0 0 auto;
+  padding:11px 14px;border-bottom:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.22));
+  background:var(--dsw-alias-bg-layer-1,transparent)}
+[data-sm-modal-t]{font-size:13px;font-weight:600;line-height:18px;letter-spacing:.01em;
+  color:var(--dsw-alias-label-primary,var(--sm-text))}
+[data-sm-modal-hint]{font-size:11.5px;line-height:16px;color:var(--sm-faint)}
+[data-sm-modal-x]{margin-left:auto;height:28px;padding:0 12px;border:0;cursor:pointer;
+  border-radius:var(--dsw-radius-sm,8px);font:inherit;font-size:12.5px;
+  color:var(--dsw-alias-label-secondary,var(--sm-dim));
+  background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.12))}
+[data-sm-modal-x]:hover{color:var(--dsw-alias-label-primary,var(--sm-text))}
+[data-sm-modal-x]:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#888);outline-offset:2px}
+[data-sm-modal-frame]{flex:1 1 auto;width:100%;border:0;display:block;background:transparent}
+@keyframes sm-fade{from{opacity:0}to{opacity:1}}
+
 @media (prefers-reduced-motion:reduce){
   [data-sm-sw],[data-sm-knob],[data-sm-btn]{transition:none}
   [data-sm-spin]{animation:none}
+  [data-sm-modal]{animation:none}
 }
 `
+
+    /* ——— 全屏浮层：点得进来，也点得出去 ——— */
+    const MODAL_ID = 'dsh-soma-sheet'
+    let escHandler = null
+
+    function closeSheet() {
+      const el = document.getElementById(MODAL_ID)
+      if (el) el.remove()
+      if (escHandler) { document.removeEventListener('keydown', escHandler); escHandler = null }
+      document.documentElement.style.removeProperty('overflow')
+    }
+
+    function openSheet(title, url, hint) {
+      closeSheet()
+      const root = document.createElement('div')
+      root.id = MODAL_ID
+      root.setAttribute('data-sm-modal', '')
+      root.setAttribute('role', 'dialog')
+      root.setAttribute('aria-label', title)
+
+      const bar = document.createElement('div')
+      bar.setAttribute('data-sm-modal-bar', '')
+      const t = document.createElement('div')
+      t.setAttribute('data-sm-modal-t', '')
+      t.textContent = title
+      const hh = document.createElement('div')
+      hh.setAttribute('data-sm-modal-hint', '')
+      hh.textContent = hint || ''
+      const x = document.createElement('button')
+      x.setAttribute('data-sm-modal-x', '')
+      x.type = 'button'
+      x.textContent = '关闭'
+      x.addEventListener('click', closeSheet)
+      bar.appendChild(t)
+      if (hint) bar.appendChild(hh)
+      bar.appendChild(x)
+
+      const fr = document.createElement('iframe')
+      fr.setAttribute('data-sm-modal-frame', '')
+      fr.setAttribute('title', title)
+      fr.src = url
+
+      root.appendChild(bar)
+      root.appendChild(fr)
+      document.body.appendChild(root)
+      document.documentElement.style.setProperty('overflow', 'hidden')
+
+      escHandler = (e) => { if (e.key === 'Escape') closeSheet() }
+      document.addEventListener('keydown', escHandler)
+    }
 
     const Switch = ({ on, onChange, label }) => h('button', {
       'data-sm-sw': '',
@@ -435,14 +504,20 @@ input[data-sm-range]::-moz-range-thumb{width:16px;height:16px;border:0;border-ra
             h('div', { 'data-sm-row': '' },
               h('div', { 'data-sm-meta': '' },
                 h('div', { 'data-sm-note': '' }, '共 ' + (st.regions || 0) + ' 个分区。改完立刻生效，不用重启。')),
-              h('a', { 'data-sm-btn': '', href: API + '/panel', target: '_blank', rel: 'noopener' }, '全身图')))),
+              h('button', {
+                'data-sm-btn': '', type: 'button',
+                onClick: () => openSheet('身体 · 全身', API + '/panel', '每秒刷新'),
+              }, '全身图')))),
 
         h('div', { 'data-sm-foot': '' },
           h('span', {}, 'dsh-soma'),
           h('span', { 'data-sm-sep': '' }, '·'),
           h('span', {}, '一秒一算，五秒一存'),
           h('span', { 'data-sm-sep': '' }, '·'),
-          h('a', { href: API, target: '_blank', rel: 'noopener', style: { color: 'inherit' } }, '原始读数')))
+          h('button', {
+            'data-sm-btn': '', type: 'button',
+            onClick: () => openSheet('原始读数', API, 'JSON'),
+          }, '原始读数')))
     }
 
     function TimeField({ label, value, onCommit }) {
